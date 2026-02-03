@@ -1,16 +1,3 @@
-[api]
-project_id = ""
+# Supabase configuration file
 
-[db]
-port = 54322
-shadow_port = 54320
-major_version = 15
-
-[studio]
-port = 54323
-
-[inbucket]
-port = 54324
-
-[storage]
-file_size_limit = "50MiB"
+# The configuration settings can be defined here.
