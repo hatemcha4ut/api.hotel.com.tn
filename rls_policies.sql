@@ -1,7 +1,5 @@
 alter table bookings enable row level security;
 alter table payments enable row level security;
-alter table hotels enable row level security;
-alter table room_types enable row level security;
 
 create policy "hotels_select" on hotels
 for select
