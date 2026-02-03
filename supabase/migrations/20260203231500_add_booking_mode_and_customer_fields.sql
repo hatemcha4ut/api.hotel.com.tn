@@ -13,15 +13,29 @@ ALTER TABLE public.bookings
   ADD COLUMN IF NOT EXISTS customer_first_name text,
   ADD COLUMN IF NOT EXISTS customer_last_name text;
 
-ALTER TABLE public.bookings
-  ALTER COLUMN user_id SET NOT NULL,
-  ALTER COLUMN booking_mode SET DEFAULT 'SANS_COMPTE';
+DO $$
+DECLARE
+  null_user_count integer;
+BEGIN
+  SELECT COUNT(*) INTO null_user_count
+  FROM public.bookings
+  WHERE user_id IS NULL;
+
+  IF null_user_count > 0 THEN
+    RAISE EXCEPTION 'Cannot enforce NOT NULL on bookings.user_id: found % existing NULL values. Update or remove these records before applying this migration.', null_user_count;
+  END IF;
+END $$;
 
 UPDATE public.bookings
-SET booking_mode = 'SANS_COMPTE'
+SET booking_mode = 'AVEC_COMPTE'
 WHERE booking_mode IS NULL;
 
+-- booking_mode tracks the flow; customer_* fields store contact info for SANS_COMPTE bookings.
 ALTER TABLE public.bookings
+  ALTER COLUMN user_id SET NOT NULL;
+
+ALTER TABLE public.bookings
+  ALTER COLUMN booking_mode SET DEFAULT 'AVEC_COMPTE',
   ALTER COLUMN booking_mode SET NOT NULL;
 
 ALTER TABLE public.bookings
