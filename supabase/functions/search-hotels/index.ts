@@ -198,7 +198,7 @@ serve(async (request) => {
 
   const children = Array.isArray(payload.children)
     ? payload.children.map((child) => normalizeNumber(child)).filter((child) =>
-      child > 0
+      child >= 0
     )
     : [];
 

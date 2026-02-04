@@ -44,6 +44,9 @@ const elementToObject = (element: Element): Record<string, unknown> => {
 
 const parseEmbeddedXml = (content: string) => {
   const decoded = decodeXmlEntities(content);
+  if (!decoded.includes("<")) {
+    return null;
+  }
   const parsed = new DOMParser().parseFromString(decoded, "application/xml");
   if (!parsed || parsed.getElementsByTagName("parsererror").length > 0) {
     return null;
