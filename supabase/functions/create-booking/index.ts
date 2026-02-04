@@ -262,11 +262,16 @@ serve(async (request) => {
       .single();
 
     if (dbError) {
-      console.error("CRITICAL: Failed to store booking record:", dbError);
+      console.error("CRITICAL: Failed to store booking record. Error:", {
+        message: dbError.message,
+        code: dbError.code,
+        details: dbError.details,
+        myGoBookingId: myGoResponse.bookingId,
+      });
       // Return 500 since we cannot track the booking
       return jsonResponse(
         {
-          error: "Booking may have been created but failed to store record. Contact support.",
+          error: "Booking created in MyGo but failed to store record. Contact support with booking ID.",
           myGoBookingId: myGoResponse.bookingId,
         },
         500,

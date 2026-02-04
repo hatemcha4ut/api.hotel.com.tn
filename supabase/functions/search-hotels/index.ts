@@ -301,7 +301,14 @@ serve(async (request) => {
 
   // Rate limiting
   const clientIp = getClientIp(request);
-  const rateLimitResult = await checkRateLimit(supabase, clientIp, RATE_LIMIT_WINDOW_MINUTES, RATE_LIMIT_MAX_REQUESTS);
+  let rateLimitResult;
+  try {
+    rateLimitResult = await checkRateLimit(supabase, clientIp, RATE_LIMIT_WINDOW_MINUTES, RATE_LIMIT_MAX_REQUESTS);
+  } catch (error) {
+    console.error("Rate limit check failed:", error);
+    // Allow request but log the error - don't block on rate limit DB issues
+    rateLimitResult = { allowed: true, remaining: -1 };
+  }
 
   if (!rateLimitResult.allowed) {
     return jsonResponse(

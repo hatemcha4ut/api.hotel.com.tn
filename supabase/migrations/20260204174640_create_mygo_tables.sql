@@ -103,6 +103,9 @@ CREATE POLICY "mygo_hotels_select_authenticated"
 -- search_cache: No direct access (managed by edge functions only)
 
 -- mygo_bookings: Users can only see their own bookings
+-- Note: mygo_bookings tracks MyGo API calls, not user bookings
+-- For MVP, authenticated users can query their related bookings via token_hash
+-- In production, consider adding user_id foreign key for better isolation
 CREATE POLICY "mygo_bookings_select_own"
   ON public.mygo_bookings
   FOR SELECT

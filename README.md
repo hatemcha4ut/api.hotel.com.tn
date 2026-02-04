@@ -40,8 +40,7 @@ curl -X POST https://your-project.supabase.co/functions/v1/mygo-sync \
 {
   "success": true,
   "action": "cities",
-  "inserted": 15,
-  "updated": 15
+  "processed": 15
 }
 ```
 
@@ -169,7 +168,7 @@ MYGO_PASSWORD=your-mygo-password
 - `mygo_cities` - Static city data from MyGo ListCity
 - `mygo_hotels` - Static hotel data from MyGo ListHotel
 - `rate_limits` - Rate limiting for public endpoints
-- `search_cache` - Short-lived cache for search results (60-180s TTL)
+- `search_cache` - Short-lived cache for search results (120s TTL)
 - `mygo_bookings` - Booking records (stores token_hash, never plain token)
 
 ## Security Features
