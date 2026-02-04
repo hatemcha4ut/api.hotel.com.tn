@@ -140,6 +140,20 @@ const mapHotel = (value: Record<string, unknown>) => ({
   image_url: toText(value.ImageUrl ?? value.ImageURL ?? value.image_url),
 });
 
+const filterValidRows = <T extends { id: string | null; name: string | null }>(
+  rows: T[],
+  label: string,
+) => {
+  const invalid = rows.filter((row) => !row.id || !row.name);
+  if (invalid.length) {
+    console.warn(
+      `MyGo ${label} sync dropped ${invalid.length} rows`,
+      invalid,
+    );
+  }
+  return rows.filter((row) => row.id && row.name);
+};
+
 serve(async (request) => {
   const origin = request.headers.get("Origin") ?? "";
   const allowedOrigin = allowedOrigins.has(origin) ? origin : "";
@@ -160,8 +174,7 @@ serve(async (request) => {
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
-    Deno.env.get("SUPABASE_ANON_KEY");
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const mygoLogin = Deno.env.get("MYGO_LOGIN");
   const mygoPassword = Deno.env.get("MYGO_PASSWORD");
   if (!supabaseUrl || !supabaseKey) {
@@ -245,7 +258,7 @@ serve(async (request) => {
 
   if (action === "cities") {
     const items = extractElements(parsed, "City");
-    const rows = items.map(mapCity).filter((row) => row.id && row.name);
+    const rows = filterValidRows(items.map(mapCity), "cities");
     if (!rows.length) {
       return jsonResponse([], 200, allowedOrigin);
     }
@@ -259,7 +272,7 @@ serve(async (request) => {
   }
 
   const items = extractElements(parsed, "Hotel");
-  const rows = items.map(mapHotel).filter((row) => row.id && row.name);
+  const rows = filterValidRows(items.map(mapHotel), "hotels");
   if (!rows.length) {
     return jsonResponse([], 200, allowedOrigin);
   }

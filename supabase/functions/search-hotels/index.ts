@@ -2,6 +2,9 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const API_BASE_URL = "https://admin.mygo.co/api/hotel/";
+const DEFAULT_ROOMS = "1";
+const DEFAULT_ADULTS = "2";
+const DEFAULT_CHILDREN = "0";
 
 const allowedOrigins = new Set([
   "https://www.hotel.com.tn",
@@ -173,8 +176,7 @@ serve(async (request) => {
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
-    Deno.env.get("SUPABASE_ANON_KEY");
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const mygoLogin = Deno.env.get("MYGO_LOGIN");
   const mygoPassword = Deno.env.get("MYGO_PASSWORD");
   if (!supabaseUrl || !supabaseKey) {
@@ -209,9 +211,9 @@ serve(async (request) => {
   const cityName = normalizeValue(payload.city_name);
   const checkIn = normalizeDate(normalizeValue(payload.check_in));
   const checkOut = normalizeDate(normalizeValue(payload.check_out));
-  const rooms = normalizeValue(payload.rooms ?? 1);
-  const adults = normalizeValue(payload.adults ?? 2);
-  const children = normalizeValue(payload.children ?? 0);
+  const rooms = normalizeValue(payload.rooms ?? DEFAULT_ROOMS);
+  const adults = normalizeValue(payload.adults ?? DEFAULT_ADULTS);
+  const children = normalizeValue(payload.children ?? DEFAULT_CHILDREN);
 
   if (!cityName || !checkIn || !checkOut) {
     return jsonResponse(
@@ -232,20 +234,14 @@ serve(async (request) => {
     return jsonResponse({ error: cityError.message }, 400, allowedOrigin);
   }
 
-  const cityIdValue = cityData?.id;
-  if (
-    cityIdValue === null ||
-    cityIdValue === undefined ||
-    (typeof cityIdValue !== "number" && typeof cityIdValue !== "string")
-  ) {
+  const cityId = normalizeValue(cityData?.id);
+  if (!cityId) {
     return jsonResponse(
       { error: "City not found" },
       404,
       allowedOrigin,
     );
   }
-
-  const cityId = normalizeValue(cityIdValue);
   const requestBody = buildRoot(
     mygoLogin,
     mygoPassword,
