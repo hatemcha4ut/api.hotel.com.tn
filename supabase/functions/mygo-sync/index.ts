@@ -62,21 +62,7 @@ const decodeXmlEntities = (value: string) => {
   return decodedWithoutAmpersand.replaceAll("&amp;", "&");
 };
 
-const normalizeDate = (value: string) => {
-  if (!value) {
-    return "";
-  }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return value;
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return "";
-  }
-  return parsed.toISOString().slice(0, 10);
-};
-
-const buildRoot = (login: string, password: string, body: string) =>
+const buildRoot = (login: string, password: string, body = "") =>
   `<?xml version="1.0" encoding="utf-8"?>
 <root>
   <login>${escapeXml(login)}</login>
@@ -117,41 +103,42 @@ const elementToObject = (element: Element): Record<string, unknown> => {
   }, {});
 };
 
-const parseHotelSearch = (document: Document) => {
-  const errorNode = document.getElementsByTagName("Error")[0];
-  if (errorNode) {
-    const message = errorNode.textContent?.trim();
-    if (message) {
-      return { error: message };
-    }
+const extractElements = (document: Document, tagName: string) => {
+  const nodes = Array.from(document.getElementsByTagName(tagName));
+  if (nodes.length) {
+    return nodes.map((node) => elementToObject(node));
   }
-
-  const hotelNodes = Array.from(
-    document.getElementsByTagName("Hotel"),
-  );
-  if (hotelNodes.length) {
-    return { hotels: hotelNodes.map((node) => elementToObject(node)) };
-  }
-
-  const responseNode = document.getElementsByTagName("HotelSearchResponse")[0] ??
-    document.documentElement;
-  const decoded = responseNode?.textContent?.trim();
+  const decoded = document.documentElement?.textContent?.trim();
   if (decoded) {
     const embedded = parseXml(decodeXmlEntities(decoded));
     if (embedded) {
-      return parseHotelSearch(embedded);
+      return extractElements(embedded, tagName);
     }
   }
-
-  const fallbackNodes = Array.from(
-    document.getElementsByTagName("HotelInfo"),
-  );
-  if (fallbackNodes.length) {
-    return { hotels: fallbackNodes.map((node) => elementToObject(node)) };
-  }
-
-  return { hotels: [] };
+  return [];
 };
+
+const toNumber = (value: unknown) => {
+  const parsed = Number(normalizeValue(value));
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const toText = (value: unknown) => normalizeValue(value) || null;
+
+const mapCity = (value: Record<string, unknown>) => ({
+  id: toText(value.CityId ?? value.ID ?? value.Id ?? value.id),
+  name: toText(value.CityName ?? value.Name ?? value.name ?? value.City),
+  region: toText(value.Region ?? value.RegionName ?? value.region),
+});
+
+const mapHotel = (value: Record<string, unknown>) => ({
+  id: toText(value.HotelId ?? value.ID ?? value.Id ?? value.id),
+  name: toText(value.HotelName ?? value.Name ?? value.name),
+  city_id: toText(value.CityId ?? value.CityID ?? value.city_id),
+  stars: toNumber(value.Stars ?? value.Star ?? value.star),
+  category: toText(value.Category ?? value.category),
+  image_url: toText(value.ImageUrl ?? value.ImageURL ?? value.image_url),
+});
 
 serve(async (request) => {
   const origin = request.headers.get("Origin") ?? "";
@@ -192,81 +179,45 @@ serve(async (request) => {
     );
   }
 
-  let payload: {
-    city_name?: string;
-    check_in?: string;
-    check_out?: string;
-    adults?: number;
-    children?: number;
-    rooms?: number;
-  };
+  let payload: { action?: string; cityId?: string | number };
   try {
     payload = await request.json();
   } catch {
     return jsonResponse({ error: "Invalid JSON payload" }, 400, allowedOrigin);
   }
 
-  const cityName = normalizeValue(payload.city_name);
-  const checkIn = normalizeDate(normalizeValue(payload.check_in));
-  const checkOut = normalizeDate(normalizeValue(payload.check_out));
-  const rooms = normalizeValue(payload.rooms ?? 1);
-  const adults = normalizeValue(payload.adults ?? 2);
-  const children = normalizeValue(payload.children ?? 0);
-
-  if (!cityName || !checkIn || !checkOut) {
+  const action = normalizeValue(payload.action);
+  if (action !== "cities" && action !== "hotels") {
     return jsonResponse(
-      { error: "Missing required search parameters" },
+      { error: "Invalid action" },
       400,
       allowedOrigin,
     );
   }
 
-  const supabase = createClient(supabaseUrl, supabaseKey);
-  const { data: cityData, error: cityError } = await supabase
-    .from("mygo_cities")
-    .select("id")
-    .ilike("name", cityName)
-    .maybeSingle();
-
-  if (cityError) {
-    return jsonResponse({ error: cityError.message }, 400, allowedOrigin);
-  }
-
-  const cityIdValue = cityData?.id;
-  if (
-    cityIdValue === null ||
-    cityIdValue === undefined ||
-    (typeof cityIdValue !== "number" && typeof cityIdValue !== "string")
-  ) {
-    return jsonResponse(
-      { error: "City not found" },
-      404,
-      allowedOrigin,
-    );
-  }
-
-  const cityId = normalizeValue(cityIdValue);
+  const cityId = normalizeValue(payload.cityId);
   const requestBody = buildRoot(
     mygoLogin,
     mygoPassword,
-    `<CityId>${escapeXml(cityId)}</CityId>
-  <CheckIn>${escapeXml(checkIn)}</CheckIn>
-  <CheckOut>${escapeXml(checkOut)}</CheckOut>
-  <Rooms>${escapeXml(rooms)}</Rooms>
-  <Adults>${escapeXml(adults)}</Adults>
-  <Children>${escapeXml(children)}</Children>`,
+    action === "hotels" && cityId
+      ? `<CityId>${escapeXml(cityId)}</CityId>`
+      : "",
   );
+
+  const endpoint = `${API_BASE_URL}${
+    action === "cities" ? "ListCity" : "ListHotel"
+  }`;
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}HotelSearch`, {
+    response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/xml" },
       body: requestBody,
     });
   } catch {
     return jsonResponse(
-      { error: "Failed to connect to hotel search service" },
+      { error: "Failed to connect to MyGo API" },
       502,
       allowedOrigin,
     );
@@ -275,7 +226,7 @@ serve(async (request) => {
   const responseText = await response.text();
   if (!response.ok) {
     return jsonResponse(
-      { error: `Hotel search request failed (${response.status})` },
+      { error: `MyGo request failed (${response.status})` },
       502,
       allowedOrigin,
     );
@@ -290,14 +241,33 @@ serve(async (request) => {
     );
   }
 
-  const parsedHotels = parseHotelSearch(parsed);
-  if (parsedHotels.error) {
-    return jsonResponse(
-      { error: parsedHotels.error },
-      502,
-      allowedOrigin,
-    );
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  if (action === "cities") {
+    const items = extractElements(parsed, "City");
+    const rows = items.map(mapCity).filter((row) => row.id && row.name);
+    if (!rows.length) {
+      return jsonResponse([], 200, allowedOrigin);
+    }
+    const { error } = await supabase
+      .from("mygo_cities")
+      .upsert(rows, { onConflict: "id" });
+    if (error) {
+      return jsonResponse({ error: error.message }, 400, allowedOrigin);
+    }
+    return jsonResponse(rows, 200, allowedOrigin);
   }
 
-  return jsonResponse(parsedHotels.hotels ?? [], 200, allowedOrigin);
+  const items = extractElements(parsed, "Hotel");
+  const rows = items.map(mapHotel).filter((row) => row.id && row.name);
+  if (!rows.length) {
+    return jsonResponse([], 200, allowedOrigin);
+  }
+  const { error } = await supabase
+    .from("mygo_hotels")
+    .upsert(rows, { onConflict: "id" });
+  if (error) {
+    return jsonResponse({ error: error.message }, 400, allowedOrigin);
+  }
+  return jsonResponse(rows, 200, allowedOrigin);
 });
