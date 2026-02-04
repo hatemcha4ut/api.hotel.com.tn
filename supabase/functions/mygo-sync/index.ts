@@ -126,18 +126,18 @@ const toNumber = (value: unknown) => {
 const toText = (value: unknown) => normalizeValue(value) || null;
 
 const mapCity = (value: Record<string, unknown>) => ({
-  id: toText(value.CityId ?? value.ID ?? value.Id ?? value.id),
-  name: toText(value.CityName ?? value.Name ?? value.name ?? value.City),
-  region: toText(value.Region ?? value.RegionName ?? value.region),
+  id: toText(value.CityId),
+  name: toText(value.CityName),
+  region: toText(value.Region ?? value.RegionName),
 });
 
 const mapHotel = (value: Record<string, unknown>) => ({
-  id: toText(value.HotelId ?? value.ID ?? value.Id ?? value.id),
-  name: toText(value.HotelName ?? value.Name ?? value.name),
-  city_id: toText(value.CityId ?? value.CityID ?? value.city_id),
-  stars: toNumber(value.Stars ?? value.Star ?? value.star),
-  category: toText(value.Category ?? value.category),
-  image_url: toText(value.ImageUrl ?? value.ImageURL ?? value.image_url),
+  id: toText(value.HotelId),
+  name: toText(value.HotelName),
+  city_id: toText(value.CityId),
+  stars: toNumber(value.Stars),
+  category: toText(value.Category),
+  image_url: toText(value.ImageUrl),
 });
 
 const filterValidRows = <T extends { id: string | null; name: string | null }>(

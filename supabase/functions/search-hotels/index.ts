@@ -266,11 +266,11 @@ serve(async (request) => {
     mygoLogin,
     mygoPassword,
     `<CityId>${escapeXml(cityId)}</CityId>
-  <CheckIn>${escapeXml(checkIn)}</CheckIn>
-  <CheckOut>${escapeXml(checkOut)}</CheckOut>
-  <Rooms>${escapeXml(rooms)}</Rooms>
-  <Adults>${escapeXml(adults)}</Adults>
-  <Children>${escapeXml(children)}</Children>`,
+<CheckIn>${escapeXml(checkIn)}</CheckIn>
+<CheckOut>${escapeXml(checkOut)}</CheckOut>
+<Rooms>${escapeXml(rooms)}</Rooms>
+<Adults>${escapeXml(adults)}</Adults>
+<Children>${escapeXml(children)}</Children>`,
   );
 
   let response: Response;
