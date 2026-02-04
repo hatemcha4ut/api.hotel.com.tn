@@ -216,7 +216,7 @@ serve(async (request) => {
   const { data: cityData, error: cityError } = await supabase
     .from("mygo_cities")
     .select("id, name")
-    .ilike("name", cityName)
+    .eq("name", cityName)
     .limit(1)
     .maybeSingle();
 

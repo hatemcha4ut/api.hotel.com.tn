@@ -8,6 +8,8 @@ const allowedOrigins = new Set([
   "https://admin.hotel.com.tn",
 ]);
 
+const MIN_CITIES_FOR_CLEANUP = 10;
+
 const corsHeaders = (origin: string) =>
   allowedOrigins.has(origin)
     ? {
@@ -239,7 +241,7 @@ serve(async (request) => {
   }
 
   const keepIds = parsed.cities.map((city) => city.id);
-  if (keepIds.length >= 10) {
+  if (keepIds.length >= MIN_CITIES_FOR_CLEANUP) {
     const { error: deleteError } = await supabase
       .from("mygo_cities")
       .delete()
