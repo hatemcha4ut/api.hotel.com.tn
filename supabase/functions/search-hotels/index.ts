@@ -126,6 +126,7 @@ const extractHotels = (root: XmlNode): Record<string, unknown>[] => {
 
   const container = root instanceof Document ? root.documentElement : root;
   const directChildren = container ? Array.from(container.children) : [];
+  // Fallback when no known hotel element tag is present in the response.
   return directChildren.map((node) => elementToObject(node));
 };
 
@@ -216,7 +217,11 @@ serve(async (request) => {
     });
   } catch (error) {
     return jsonResponse(
-      { error: error instanceof Error ? error.message : "Failed to reach SOAP API" },
+      {
+        error: error instanceof Error
+          ? error.message
+          : "Network error: Failed to reach SOAP API",
+      },
       502,
       allowedOrigin,
     );
