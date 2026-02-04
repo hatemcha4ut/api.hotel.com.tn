@@ -140,7 +140,9 @@ const mapHotel = (value: Record<string, unknown>) => ({
   image_url: toText(value.ImageUrl),
 });
 
-const filterValidRows = <T extends { id: string | null; name: string | null }>(
+const filterValidRows = <
+  T extends { id: string | null; name: string | null; [key: string]: unknown },
+>(
   rows: T[],
   resourceName: string,
 ) => {
@@ -163,6 +165,18 @@ const filterValidRows = <T extends { id: string | null; name: string | null }>(
   }
 
   return valid;
+};
+
+const upsertRows = async (
+  supabase: ReturnType<typeof createClient>,
+  table: "mygo_cities" | "mygo_hotels",
+  rows: Record<string, unknown>[],
+) => {
+  const { error } = await supabase.from(table).upsert(rows, { onConflict: "id" });
+  if (error) {
+    return { error };
+  }
+  return { error: null };
 };
 
 serve(async (request) => {
@@ -203,7 +217,11 @@ serve(async (request) => {
     );
   }
 
-  let payload: { action?: string; cityId?: string | number };
+  type SyncPayload =
+    | { action: "cities" }
+    | { action: "hotels"; cityId: string | number };
+
+  let payload: SyncPayload | { action?: string; cityId?: string | number };
   try {
     payload = await request.json();
   } catch {
@@ -219,7 +237,16 @@ serve(async (request) => {
     );
   }
 
-  const cityId = normalizeValue(payload.cityId);
+  const cityId = normalizeValue(
+    "cityId" in payload ? payload.cityId : undefined,
+  );
+  if (action === "hotels" && !cityId) {
+    return jsonResponse(
+      { error: "Missing cityId for hotel sync" },
+      400,
+      allowedOrigin,
+    );
+  }
   const requestBody = buildRoot(
     mygoLogin,
     mygoPassword,
@@ -273,9 +300,7 @@ serve(async (request) => {
     if (!rows.length) {
       return jsonResponse([], 200, allowedOrigin);
     }
-    const { error } = await supabase
-      .from("mygo_cities")
-      .upsert(rows, { onConflict: "id" });
+    const { error } = await upsertRows(supabase, "mygo_cities", rows);
     if (error) {
       return jsonResponse({ error: error.message }, 500, allowedOrigin);
     }
@@ -287,9 +312,7 @@ serve(async (request) => {
   if (!rows.length) {
     return jsonResponse([], 200, allowedOrigin);
   }
-  const { error } = await supabase
-    .from("mygo_hotels")
-    .upsert(rows, { onConflict: "id" });
+  const { error } = await upsertRows(supabase, "mygo_hotels", rows);
   if (error) {
     return jsonResponse({ error: error.message }, 500, allowedOrigin);
   }

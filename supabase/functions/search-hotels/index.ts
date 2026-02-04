@@ -84,15 +84,12 @@ const isCheckOutAfterCheckIn = (checkIn: string, checkOut: string) => {
   if (!checkIn || !checkOut) {
     return false;
   }
-  const checkInDate = new Date(`${checkIn}T00:00:00Z`);
-  const checkOutDate = new Date(`${checkOut}T00:00:00Z`);
-  if (
-    Number.isNaN(checkInDate.getTime()) ||
-    Number.isNaN(checkOutDate.getTime())
-  ) {
+  const checkInValue = Number(checkIn.replaceAll("-", ""));
+  const checkOutValue = Number(checkOut.replaceAll("-", ""));
+  if (Number.isNaN(checkInValue) || Number.isNaN(checkOutValue)) {
     return false;
   }
-  return checkOutDate.getTime() > checkInDate.getTime();
+  return checkOutValue > checkInValue;
 };
 
 const buildSearchBody = (
@@ -229,9 +226,6 @@ serve(async (request) => {
     city_name?: string;
     check_in?: string;
     check_out?: string;
-    cityName?: string;
-    checkIn?: string;
-    checkOut?: string;
     adults?: number;
     children?: number;
     rooms?: number;
@@ -242,13 +236,9 @@ serve(async (request) => {
     return jsonResponse({ error: "Invalid JSON payload" }, 400, allowedOrigin);
   }
 
-  const cityName = normalizeValue(payload.cityName ?? payload.city_name);
-  const checkIn = normalizeDate(
-    normalizeValue(payload.checkIn ?? payload.check_in),
-  );
-  const checkOut = normalizeDate(
-    normalizeValue(payload.checkOut ?? payload.check_out),
-  );
+  const cityName = normalizeValue(payload.city_name);
+  const checkIn = normalizeDate(normalizeValue(payload.check_in));
+  const checkOut = normalizeDate(normalizeValue(payload.check_out));
   const rooms = normalizeValue(payload.rooms ?? DEFAULT_ROOMS);
   const adults = normalizeValue(payload.adults ?? DEFAULT_ADULTS);
   const children = normalizeValue(payload.children ?? DEFAULT_CHILDREN);
