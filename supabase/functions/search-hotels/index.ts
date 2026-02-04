@@ -227,11 +227,11 @@ serve(async (request) => {
   const { data: cityData, error: cityError } = await supabase
     .from("mygo_cities")
     .select("id")
-    .ilike("name", cityName)
+    .eq("name", cityName)
     .maybeSingle();
 
   if (cityError) {
-    return jsonResponse({ error: cityError.message }, 400, allowedOrigin);
+    return jsonResponse({ error: cityError.message }, 500, allowedOrigin);
   }
 
   const cityId = normalizeValue(cityData?.id);

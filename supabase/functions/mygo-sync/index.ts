@@ -266,7 +266,7 @@ serve(async (request) => {
       .from("mygo_cities")
       .upsert(rows, { onConflict: "id" });
     if (error) {
-      return jsonResponse({ error: error.message }, 400, allowedOrigin);
+      return jsonResponse({ error: error.message }, 500, allowedOrigin);
     }
     return jsonResponse(rows, 200, allowedOrigin);
   }
@@ -280,7 +280,7 @@ serve(async (request) => {
     .from("mygo_hotels")
     .upsert(rows, { onConflict: "id" });
   if (error) {
-    return jsonResponse({ error: error.message }, 400, allowedOrigin);
+    return jsonResponse({ error: error.message }, 500, allowedOrigin);
   }
   return jsonResponse(rows, 200, allowedOrigin);
 });
