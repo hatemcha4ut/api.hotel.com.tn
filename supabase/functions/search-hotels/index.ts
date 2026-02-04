@@ -65,6 +65,7 @@ const decodeXmlEntities = (value: string) => {
   return decodedWithoutAmpersand.replaceAll("&amp;", "&");
 };
 
+// Normalize supported date inputs into YYYY-MM-DD or return empty string if invalid.
 const normalizeDate = (value: string) => {
   if (!value) {
     return "";
@@ -80,6 +81,9 @@ const normalizeDate = (value: string) => {
 };
 
 const isCheckOutAfterCheckIn = (checkIn: string, checkOut: string) => {
+  if (!checkIn || !checkOut) {
+    return false;
+  }
   const checkInDate = new Date(`${checkIn}T00:00:00Z`);
   const checkOutDate = new Date(`${checkOut}T00:00:00Z`);
   if (
@@ -90,6 +94,21 @@ const isCheckOutAfterCheckIn = (checkIn: string, checkOut: string) => {
   }
   return checkOutDate.getTime() > checkInDate.getTime();
 };
+
+const buildSearchBody = (
+  cityId: string,
+  checkIn: string,
+  checkOut: string,
+  rooms: string,
+  adults: string,
+  children: string,
+) =>
+  `<CityId>${escapeXml(cityId)}</CityId>
+<CheckIn>${escapeXml(checkIn)}</CheckIn>
+<CheckOut>${escapeXml(checkOut)}</CheckOut>
+<Rooms>${escapeXml(rooms)}</Rooms>
+<Adults>${escapeXml(adults)}</Adults>
+<Children>${escapeXml(children)}</Children>`;
 
 const buildRoot = (login: string, password: string, body: string) =>
   `<?xml version="1.0" encoding="utf-8"?>
@@ -265,12 +284,7 @@ serve(async (request) => {
   const requestBody = buildRoot(
     mygoLogin,
     mygoPassword,
-    `<CityId>${escapeXml(cityId)}</CityId>
-<CheckIn>${escapeXml(checkIn)}</CheckIn>
-<CheckOut>${escapeXml(checkOut)}</CheckOut>
-<Rooms>${escapeXml(rooms)}</Rooms>
-<Adults>${escapeXml(adults)}</Adults>
-<Children>${escapeXml(children)}</Children>`,
+    buildSearchBody(cityId, checkIn, checkOut, rooms, adults, children),
   );
 
   let response: Response;
