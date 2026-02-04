@@ -209,13 +209,34 @@ serve(async (request) => {
   const hotelName = normalizeValue(payload.hotelName);
   const onlyAvailable = payload.onlyAvailable === true;
 
+  let invalidChildAge = false;
   const children = Array.isArray(payload.children)
-    ? payload.children.map((child) => normalizeNumber(child))
+    ? payload.children.reduce<number[]>((acc, child) => {
+      const numeric = typeof child === "number"
+        ? child
+        : typeof child === "string" && child.trim().length
+        ? Number(child)
+        : Number.NaN;
+      if (!Number.isFinite(numeric) || numeric < 0) {
+        invalidChildAge = true;
+        return acc;
+      }
+      acc.push(Math.floor(numeric));
+      return acc;
+    }, [])
     : [];
+
+  if (invalidChildAge) {
+    return jsonResponse(
+      { error: "Invalid children ages" },
+      400,
+      allowedOrigin,
+    );
+  }
 
   if (!cityInput || !checkIn || !checkOut || adults <= 0) {
     return jsonResponse(
-      { error: "Missing required search parameters" },
+      { error: "Missing required search parameters (adults must be >= 1)" },
       400,
       allowedOrigin,
     );

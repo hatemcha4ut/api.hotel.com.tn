@@ -188,8 +188,11 @@ serve(async (request) => {
 
   if (!cityRecords.length) {
     return jsonResponse(
-      { error: "No cities found in response" },
-      502,
+      {
+        synced: 0,
+        cities: [],
+      },
+      200,
       allowedOrigin,
     );
   }

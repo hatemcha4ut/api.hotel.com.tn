@@ -93,7 +93,9 @@ export const parseXmlResponse = (
   const errorNode = document.getElementsByTagName("Error")[0] ??
     document.getElementsByTagName("Fault")[0];
   const faultString = document.getElementsByTagName("faultstring")[0];
-  const message = errorNode?.textContent?.trim() ??
+  const nestedFault = errorNode?.getElementsByTagName("faultstring")[0];
+  const message = nestedFault?.textContent?.trim() ??
+    errorNode?.textContent?.trim() ??
     faultString?.textContent?.trim();
   if (message) {
     return { error: message };
