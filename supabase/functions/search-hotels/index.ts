@@ -89,7 +89,10 @@ const buildHotelSearchXml = (
     `        <Child>${escapeXml(child.toString())}</Child>`
   ).join("\n");
   const keywordValue = hotelName ? escapeXml(hotelName) : "";
-  const childrenBlock = childrenXml ? `${childrenXml}\n` : "";
+  const keywordsBlock = keywordValue
+    ? `      <Keywords>${keywordValue}</Keywords>\n`
+    : "";
+  const childrenBlock = childrenXml ? `\n${childrenXml}` : "";
   return `<?xml version="1.0" encoding="utf-8"?>
 <HotelSearch>
   <Credential>
@@ -103,13 +106,12 @@ const buildHotelSearchXml = (
       <City>${escapeXml(cityId)}</City>
     </BookingDetails>
     <Filters>
-      <Keywords>${keywordValue}</Keywords>
-      <OnlyAvailable>${onlyAvailable ? "true" : "false"}</OnlyAvailable>
+${keywordsBlock}      <OnlyAvailable>${onlyAvailable ? "true" : "false"}</OnlyAvailable>
     </Filters>
     <Rooms>
       <Room>
-        <Adult>${escapeXml(adults.toString())}</Adult>
-${childrenBlock}      </Room>
+        <Adult>${escapeXml(adults.toString())}</Adult>${childrenBlock}
+      </Room>
     </Rooms>
   </SearchDetails>
 </HotelSearch>`;
