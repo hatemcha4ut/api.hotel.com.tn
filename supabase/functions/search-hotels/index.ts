@@ -85,36 +85,47 @@ const buildHotelSearchXml = (
   hotelName: string,
   onlyAvailable: boolean,
 ) => {
-  const childrenXml = children.map((child) =>
-    `        <Child>${escapeXml(child.toString())}</Child>`
-  ).join("\n");
   const keywordValue = hotelName ? escapeXml(hotelName) : "";
-  const keywordsBlock = keywordValue
-    ? `      <Keywords>${keywordValue}</Keywords>\n`
-    : "";
-  const childrenBlock = childrenXml ? `\n${childrenXml}` : "";
-  return `<?xml version="1.0" encoding="utf-8"?>
-<HotelSearch>
-  <Credential>
-    <Login>${escapeXml(login)}</Login>
-    <Password>${escapeXml(password)}</Password>
-  </Credential>
-  <SearchDetails>
-    <BookingDetails>
-      <CheckIn>${escapeXml(checkIn)}</CheckIn>
-      <CheckOut>${escapeXml(checkOut)}</CheckOut>
-      <City>${escapeXml(cityId)}</City>
-    </BookingDetails>
-    <Filters>
-${keywordsBlock}      <OnlyAvailable>${onlyAvailable ? "true" : "false"}</OnlyAvailable>
-    </Filters>
-    <Rooms>
-      <Room>
-        <Adult>${escapeXml(adults.toString())}</Adult>${childrenBlock}
-      </Room>
-    </Rooms>
-  </SearchDetails>
-</HotelSearch>`;
+  const lines = [
+    `<?xml version="1.0" encoding="utf-8"?>`,
+    `<HotelSearch>`,
+    `  <Credential>`,
+    `    <Login>${escapeXml(login)}</Login>`,
+    `    <Password>${escapeXml(password)}</Password>`,
+    `  </Credential>`,
+    `  <SearchDetails>`,
+    `    <BookingDetails>`,
+    `      <CheckIn>${escapeXml(checkIn)}</CheckIn>`,
+    `      <CheckOut>${escapeXml(checkOut)}</CheckOut>`,
+    `      <City>${escapeXml(cityId)}</City>`,
+    `    </BookingDetails>`,
+    `    <Filters>`,
+  ];
+
+  if (keywordValue) {
+    lines.push(`      <Keywords>${keywordValue}</Keywords>`);
+  }
+
+  lines.push(
+    `      <OnlyAvailable>${onlyAvailable ? "true" : "false"}</OnlyAvailable>`,
+    `    </Filters>`,
+    `    <Rooms>`,
+    `      <Room>`,
+    `        <Adult>${escapeXml(adults.toString())}</Adult>`,
+  );
+
+  for (const child of children) {
+    lines.push(`        <Child>${escapeXml(child.toString())}</Child>`);
+  }
+
+  lines.push(
+    `      </Room>`,
+    `    </Rooms>`,
+    `  </SearchDetails>`,
+    `</HotelSearch>`,
+  );
+
+  return lines.join("\n");
 };
 
 const buildAuthHeader = (login: string, password: string) =>
