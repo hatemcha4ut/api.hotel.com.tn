@@ -27,12 +27,14 @@ const jsonResponse = (
   body: Record<string, unknown> | unknown[],
   status: number,
   origin?: string,
+  cacheControl?: string,
 ) =>
   new Response(JSON.stringify(body), {
     status,
     headers: {
       "Content-Type": "application/json",
       ...(origin ? corsHeaders(origin) : {}),
+      ...(cacheControl ? { "Cache-Control": cacheControl } : {}),
     },
   });
 
@@ -144,6 +146,31 @@ const extractHotels = (root: XmlContainer): Record<string, unknown>[] => {
   const directChildren = container ? Array.from(container.children) : [];
   // Fallback when no known hotel element tag is present in the response.
   return directChildren.map((node) => elementToObject(node));
+};
+
+// Sanitize hotel data by removing sensitive fields like tokens
+// Token field is set to null for backward compatibility but marked as deprecated
+const sanitizeHotels = (
+  hotels: Record<string, unknown>[],
+): Record<string, unknown>[] => {
+  return hotels.map((hotel) => {
+    // Create a shallow copy and remove/nullify token fields
+    const sanitized = { ...hotel };
+    // Remove any token-related fields that may exist in the SOAP response
+    delete sanitized.token;
+    delete sanitized.Token;
+    delete sanitized.TOKEN;
+    delete sanitized.searchToken;
+    delete sanitized.SearchToken;
+    delete sanitized.bookingToken;
+    delete sanitized.BookingToken;
+    
+    // For backward compatibility, set token to null to indicate it's no longer provided
+    // Frontend should not depend on this field - it's deprecated
+    sanitized.token = null;
+    
+    return sanitized;
+  });
 };
 
 const parseSoapResponse = (
@@ -262,5 +289,15 @@ serve(async (request) => {
     );
   }
 
-  return jsonResponse(parsed.hotels, 200, allowedOrigin);
+  // Sanitize hotels to remove token fields before returning
+  // This ensures tokens are never exposed in the public, cacheable response
+  const sanitizedHotels = sanitizeHotels(parsed.hotels);
+
+  // Return sanitized hotels with cache headers (120 seconds as per requirements)
+  return jsonResponse(
+    sanitizedHotels,
+    200,
+    allowedOrigin,
+    "public, max-age=120",
+  );
 });

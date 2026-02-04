@@ -1,6 +1,12 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { verify } from "https://deno.land/x/djwt@v2.8/mod.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import {
+  callBookingCreation,
+  callHotelSearch,
+  hashToken,
+  type HotelSearchParams,
+} from "../_shared/mygo-soap.ts";
 
 const allowedOrigins = new Set([
   "https://www.hotel.com.tn",
@@ -31,6 +37,10 @@ const verifyJwtClaims = async (
   secret: string,
   algorithm: "HS256",
 ) => (await verify(token, secret, algorithm)) as Record<string, unknown>;
+
+// Normalize string values from payload
+const normalizeString = (value: unknown) =>
+  typeof value === "string" ? value.trim() : "";
 
 const jsonResponse = (
   body: Record<string, unknown>,
@@ -113,6 +123,12 @@ serve(async (request) => {
   }
 
   let payload: {
+    searchParams?: {
+      cityId?: string | number;
+      checkIn?: string;
+      checkOut?: string;
+      occupancy?: string | number;
+    };
     booking?: Record<string, unknown>;
     booking_rooms?: Record<string, unknown>[];
   };
@@ -120,6 +136,32 @@ serve(async (request) => {
     payload = await request.json();
   } catch {
     return jsonResponse({ error: "Invalid JSON payload" }, 400, allowedOrigin);
+  }
+
+  // Validate searchParams
+  if (
+    !payload.searchParams ||
+    typeof payload.searchParams !== "object" ||
+    Array.isArray(payload.searchParams)
+  ) {
+    return jsonResponse(
+      { error: "Missing or invalid searchParams" },
+      400,
+      allowedOrigin,
+    );
+  }
+
+  const cityId = normalizeString(payload.searchParams.cityId);
+  const checkIn = normalizeString(payload.searchParams.checkIn);
+  const checkOut = normalizeString(payload.searchParams.checkOut);
+  const occupancy = normalizeString(payload.searchParams.occupancy);
+
+  if (!cityId || !checkIn || !checkOut || !occupancy) {
+    return jsonResponse(
+      { error: "Missing required search parameters (cityId, checkIn, checkOut, occupancy)" },
+      400,
+      allowedOrigin,
+    );
   }
 
   if (
@@ -142,15 +184,66 @@ serve(async (request) => {
   const isAnonymous = claimAnonymous === true;
   const bookingMode = isAnonymous ? "SANS_COMPTE" : "AVEC_COMPTE";
 
+  // Step 1: Call MyGo HotelSearch to get a fresh token
+  // This is required for the BookingCreation call
+  const searchParams: HotelSearchParams = {
+    cityId,
+    checkIn,
+    checkOut,
+    occupancy,
+  };
+
+  const searchResult = await callHotelSearch(searchParams);
+  if (searchResult.error) {
+    return jsonResponse(
+      { error: `Hotel search failed: ${searchResult.error}` },
+      502,
+      allowedOrigin,
+    );
+  }
+
+  if (!searchResult.result?.token) {
+    return jsonResponse(
+      { error: "MyGo token not received from search" },
+      502,
+      allowedOrigin,
+    );
+  }
+
+  const mygoToken = searchResult.result.token;
+
+  // Step 2: Call MyGo BookingCreation with PreBooking=true
+  // This validates the booking with MyGo before we save to our database
+  const bookingResult = await callBookingCreation(mygoToken, payload.booking);
+  if (bookingResult.error) {
+    return jsonResponse(
+      { error: `Booking creation failed: ${bookingResult.error}` },
+      502,
+      allowedOrigin,
+    );
+  }
+
+  // Step 3: Hash the token for secure storage (never store plain token)
+  // We may need to reference this booking with MyGo later
+  const tokenHash = await hashToken(mygoToken);
+
   const bookingPayload = Object.fromEntries(
     Object.entries(payload.booking).filter(
       ([key]) => key !== "booking_mode" && key !== "id",
     ),
   );
 
+  // Add the MyGo booking reference and token hash to our database record
+  const bookingWithMyGoData = {
+    ...bookingPayload,
+    booking_mode: bookingMode,
+    mygo_token_hash: tokenHash,
+    mygo_booking_reference: bookingResult.bookingReference,
+  };
+
   const { data: bookingData, error: bookingError } = await supabase
     .from("booking")
-    .insert({ ...bookingPayload, booking_mode: bookingMode })
+    .insert(bookingWithMyGoData)
     .select()
     .single();
 
