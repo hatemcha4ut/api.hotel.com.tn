@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-import { parseXmlResponse } from "./xml.ts";
+import { escapeXml, parseXmlResponse } from "./xml.ts";
 
 const MYGO_ENDPOINT = "https://admin.mygo.co/api/hotel";
 
@@ -59,19 +59,10 @@ const normalizeNumber = (value: unknown) => {
   return 0;
 };
 
-const escapeXml = (value: string) =>
-  value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-
 type SearchPayload = {
   cityId?: string | number;
   checkIn?: string;
   checkOut?: string;
-  occupancy?: string | number;
   adults?: string | number;
   children?: number[] | string[];
   hotelName?: string;
@@ -95,9 +86,10 @@ const buildHotelSearchXml = (
   onlyAvailable: boolean,
 ) => {
   const childrenXml = children.map((child) =>
-    `      <Child>${escapeXml(child.toString())}</Child>`
+    `        <Child>${escapeXml(child.toString())}</Child>`
   ).join("\n");
   const keywordValue = hotelName ? escapeXml(hotelName) : "";
+  const childrenBlock = childrenXml ? `${childrenXml}\n` : "";
   return `<?xml version="1.0" encoding="utf-8"?>
 <HotelSearch>
   <Credential>
@@ -117,7 +109,7 @@ const buildHotelSearchXml = (
     <Rooms>
       <Room>
         <Adult>${escapeXml(adults.toString())}</Adult>
-${childrenXml ? `${childrenXml}\n` : ""}      </Room>
+${childrenBlock}      </Room>
     </Rooms>
   </SearchDetails>
 </HotelSearch>`;
@@ -200,7 +192,7 @@ serve(async (request) => {
   const cityInput = normalizeValue(payload.cityId);
   const checkIn = normalizeValue(payload.checkIn);
   const checkOut = normalizeValue(payload.checkOut);
-  const adults = normalizeNumber(payload.adults ?? payload.occupancy);
+  const adults = normalizeNumber(payload.adults);
   const hotelName = normalizeValue(payload.hotelName);
   const onlyAvailable = payload.onlyAvailable === true;
 
