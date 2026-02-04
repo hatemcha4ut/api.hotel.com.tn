@@ -3,7 +3,7 @@ import { verify } from "https://deno.land/x/djwt@v2.8/mod.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const allowedOrigins = new Set([
-  "https://hotel.com.tn",
+  "https://www.hotel.com.tn",
   "https://admin.hotel.com.tn",
 ]);
 
