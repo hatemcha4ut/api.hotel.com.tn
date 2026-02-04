@@ -32,6 +32,19 @@ const jsonResponse = (
     },
   });
 
+const timingSafeEqual = (left: string, right: string) => {
+  const leftLength = left.length;
+  const rightLength = right.length;
+  const maxLength = Math.max(leftLength, rightLength);
+  let mismatchBits = leftLength ^ rightLength;
+  for (let i = 0; i < maxLength; i += 1) {
+    const leftChar = i < leftLength ? left.charCodeAt(i) : 0;
+    const rightChar = i < rightLength ? right.charCodeAt(i) : 0;
+    mismatchBits |= leftChar ^ rightChar;
+  }
+  return mismatchBits === 0;
+};
+
 const escapeXml = (value: string) =>
   value
     .replaceAll("&", "&amp;")
@@ -167,8 +180,8 @@ serve(async (request) => {
   }
 
   const bearerToken = authHeader.slice("Bearer ".length).trim();
-  if (bearerToken !== mygoSyncToken) {
-    return jsonResponse({ error: "Unauthorized" }, 403, allowedOrigin);
+  if (!timingSafeEqual(bearerToken, mygoSyncToken)) {
+    return jsonResponse({ error: "Unauthorized" }, 401, allowedOrigin);
   }
 
   const requestBody = buildListCityBody(mygoLogin, mygoPassword);
@@ -223,6 +236,18 @@ serve(async (request) => {
 
   if (upsertError) {
     return jsonResponse({ error: upsertError.message }, 500, allowedOrigin);
+  }
+
+  const keepIds = parsed.cities.map((city) => city.id);
+  if (keepIds.length >= 10) {
+    const { error: deleteError } = await supabase
+      .from("mygo_cities")
+      .delete()
+      .not("id", "in", keepIds);
+
+    if (deleteError) {
+      return jsonResponse({ error: deleteError.message }, 500, allowedOrigin);
+    }
   }
 
   return jsonResponse(
