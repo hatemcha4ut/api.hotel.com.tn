@@ -142,7 +142,7 @@ const mapHotel = (value: Record<string, unknown>) => ({
 
 const filterValidRows = <T extends { id: string | null; name: string | null }>(
   rows: T[],
-  label: string,
+  resourceName: string,
 ) => {
   const valid: T[] = [];
   const invalid: T[] = [];
@@ -157,7 +157,7 @@ const filterValidRows = <T extends { id: string | null; name: string | null }>(
 
   if (invalid.length) {
     console.warn(
-      `MyGo ${label} sync dropped ${invalid.length} rows`,
+      `MyGo ${resourceName} sync dropped ${invalid.length} rows`,
       invalid,
     );
   }

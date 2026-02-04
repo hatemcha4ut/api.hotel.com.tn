@@ -229,6 +229,9 @@ serve(async (request) => {
     city_name?: string;
     check_in?: string;
     check_out?: string;
+    cityName?: string;
+    checkIn?: string;
+    checkOut?: string;
     adults?: number;
     children?: number;
     rooms?: number;
@@ -239,9 +242,13 @@ serve(async (request) => {
     return jsonResponse({ error: "Invalid JSON payload" }, 400, allowedOrigin);
   }
 
-  const cityName = normalizeValue(payload.city_name);
-  const checkIn = normalizeDate(normalizeValue(payload.check_in));
-  const checkOut = normalizeDate(normalizeValue(payload.check_out));
+  const cityName = normalizeValue(payload.cityName ?? payload.city_name);
+  const checkIn = normalizeDate(
+    normalizeValue(payload.checkIn ?? payload.check_in),
+  );
+  const checkOut = normalizeDate(
+    normalizeValue(payload.checkOut ?? payload.check_out),
+  );
   const rooms = normalizeValue(payload.rooms ?? DEFAULT_ROOMS);
   const adults = normalizeValue(payload.adults ?? DEFAULT_ADULTS);
   const children = normalizeValue(payload.children ?? DEFAULT_CHILDREN);
