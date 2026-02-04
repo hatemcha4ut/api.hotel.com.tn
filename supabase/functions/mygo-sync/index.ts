@@ -145,16 +145,30 @@ serve(async (request) => {
     return jsonResponse({ error: "Method not allowed" }, 405, allowedOrigin);
   }
 
+  const authHeader = request.headers.get("Authorization") ?? "";
+  if (!authHeader.toLowerCase().startsWith("bearer ")) {
+    return jsonResponse({ error: "Missing bearer token" }, 401, allowedOrigin);
+  }
+
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const mygoSyncToken = Deno.env.get("MYGO_SYNC_TOKEN");
   const mygoLogin = Deno.env.get("MYGO_LOGIN");
   const mygoPassword = Deno.env.get("MYGO_PASSWORD");
-  if (!supabaseUrl || !supabaseKey || !mygoLogin || !mygoPassword) {
+  if (
+    !supabaseUrl || !supabaseKey || !mygoLogin || !mygoPassword ||
+    !mygoSyncToken
+  ) {
     return jsonResponse(
       { error: "Missing configuration for MyGo sync" },
       500,
       allowedOrigin,
     );
+  }
+
+  const bearerToken = authHeader.slice("Bearer ".length).trim();
+  if (bearerToken !== mygoSyncToken) {
+    return jsonResponse({ error: "Unauthorized" }, 403, allowedOrigin);
   }
 
   const requestBody = buildListCityBody(mygoLogin, mygoPassword);

@@ -3,6 +3,8 @@ create table if not exists public.mygo_cities (
   name text not null
 );
 
+create index if not exists mygo_cities_name_idx on public.mygo_cities (name);
+
 create table if not exists public.mygo_hotels (
   id text primary key,
   name text not null,
