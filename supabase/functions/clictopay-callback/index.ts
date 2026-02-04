@@ -10,18 +10,23 @@ const jsonResponse = (body: Record<string, unknown>, status: number) =>
 const toHex = (bytes: Uint8Array) =>
   Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 
+const SUCCESS_STATUSES = ["paid", "success", "succeeded"];
+const POSTGREST_NOT_FOUND_CODE = "PGRST116";
+
 const timingSafeEqual = (left: string, right: string) => {
-  if (left.length !== right.length) {
-    return false;
-  }
-  let mismatchBits = 0;
-  for (let i = 0; i < left.length; i += 1) {
-    mismatchBits |= left.charCodeAt(i) ^ right.charCodeAt(i);
+  const leftLength = left.length;
+  const rightLength = right.length;
+  const maxLength = Math.max(leftLength, rightLength);
+  let mismatchBits = leftLength ^ rightLength;
+  for (let i = 0; i < maxLength; i += 1) {
+    const leftChar = i < leftLength ? left.charCodeAt(i) : 0;
+    const rightChar = i < rightLength ? right.charCodeAt(i) : 0;
+    mismatchBits |= leftChar ^ rightChar;
   }
   return mismatchBits === 0;
 };
 
-const signPayload = async (payload: string, secret: string) => {
+const generateHmacSignature = async (payload: string, secret: string) => {
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -76,18 +81,18 @@ serve(async (request) => {
     );
   }
 
-  const expectedSignature = await signPayload(
+  const signatureLower = signature.toLowerCase();
+  const expectedSignature = await generateHmacSignature(
     `${reference}:${status}`,
     clictopaySecret,
   );
-  if (!timingSafeEqual(expectedSignature, signature.toLowerCase())) {
+  const signatureMatches = timingSafeEqual(expectedSignature, signatureLower);
+  if (!signatureMatches) {
     return jsonResponse({ error: "Invalid signature" }, 403);
   }
 
   const normalizedStatus = status.toLowerCase();
-  const paymentStatus = ["paid", "success", "succeeded"].includes(
-      normalizedStatus,
-    )
+  const paymentStatus = SUCCESS_STATUSES.includes(normalizedStatus)
     ? "paid"
     : "failed";
   const bookingStatus = paymentStatus === "paid" ? "confirmed" : "failed";
@@ -96,30 +101,73 @@ serve(async (request) => {
     auth: { persistSession: false },
   });
 
-  const { data: paymentData, error: paymentError } = await supabase
+  const { data: paymentRecord, error: paymentSelectError } = await supabase
     .from("payments")
-    .update({ status: paymentStatus })
+    .select("id, booking_id, status")
     .eq("reference", reference)
-    .select("booking_id")
     .single();
 
-  if (paymentError) {
-    const notFound = paymentError.code === "PGRST116";
-    return jsonResponse({ error: paymentError.message }, notFound ? 404 : 500);
+  if (paymentSelectError) {
+    const notFound = paymentSelectError.code === POSTGREST_NOT_FOUND_CODE;
+    return jsonResponse(
+      { error: paymentSelectError.message },
+      notFound ? 404 : 500,
+    );
   }
 
-  const bookingId = paymentData?.booking_id;
+  const bookingId = paymentRecord.booking_id;
   if (!bookingId) {
     return jsonResponse({ error: "Missing booking_id for payment" }, 404);
+  }
+
+  const previousPaymentStatus = paymentRecord.status;
+  const { data: bookingRecord, error: bookingSelectError } = await supabase
+    .from("bookings")
+    .select("id, status")
+    .eq("id", bookingId)
+    .single();
+
+  if (bookingSelectError) {
+    const notFound = bookingSelectError.code === POSTGREST_NOT_FOUND_CODE;
+    return jsonResponse(
+      { error: bookingSelectError.message },
+      notFound ? 404 : 500,
+    );
+  }
+
+  const { error: paymentError } = await supabase
+    .from("payments")
+    .update({ status: paymentStatus })
+    .eq("id", paymentRecord.id);
+
+  if (paymentError) {
+    const notFound = paymentError.code === POSTGREST_NOT_FOUND_CODE;
+    return jsonResponse({ error: paymentError.message }, notFound ? 404 : 500);
   }
 
   const { error: bookingError } = await supabase
     .from("bookings")
     .update({ status: bookingStatus })
-    .eq("id", bookingId);
+    .eq("id", bookingRecord.id);
 
   if (bookingError) {
-    return jsonResponse({ error: bookingError.message }, 500);
+    if (previousPaymentStatus !== null && previousPaymentStatus !== undefined) {
+      const { error: rollbackError } = await supabase
+        .from("payments")
+        .update({ status: previousPaymentStatus })
+        .eq("id", paymentRecord.id);
+      if (rollbackError) {
+        return jsonResponse(
+          {
+            error:
+              `Booking update failed (${bookingError.message}); rollback failed: ${rollbackError.message}`,
+          },
+          500,
+        );
+      }
+    }
+    const notFound = bookingError.code === POSTGREST_NOT_FOUND_CODE;
+    return jsonResponse({ error: bookingError.message }, notFound ? 404 : 500);
   }
 
   return jsonResponse({ success: true }, 200);
