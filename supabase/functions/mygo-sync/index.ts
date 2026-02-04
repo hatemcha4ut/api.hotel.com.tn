@@ -144,14 +144,25 @@ const filterValidRows = <T extends { id: string | null; name: string | null }>(
   rows: T[],
   label: string,
 ) => {
-  const invalid = rows.filter((row) => !row.id || !row.name);
+  const valid: T[] = [];
+  const invalid: T[] = [];
+
+  for (const row of rows) {
+    if (row.id && row.name) {
+      valid.push(row);
+    } else {
+      invalid.push(row);
+    }
+  }
+
   if (invalid.length) {
     console.warn(
       `MyGo ${label} sync dropped ${invalid.length} rows`,
       invalid,
     );
   }
-  return rows.filter((row) => row.id && row.name);
+
+  return valid;
 };
 
 serve(async (request) => {

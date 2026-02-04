@@ -79,6 +79,18 @@ const normalizeDate = (value: string) => {
   return parsed.toISOString().slice(0, 10);
 };
 
+const isCheckOutAfterCheckIn = (checkIn: string, checkOut: string) => {
+  const checkInDate = new Date(`${checkIn}T00:00:00Z`);
+  const checkOutDate = new Date(`${checkOut}T00:00:00Z`);
+  if (
+    Number.isNaN(checkInDate.getTime()) ||
+    Number.isNaN(checkOutDate.getTime())
+  ) {
+    return false;
+  }
+  return checkOutDate.getTime() > checkInDate.getTime();
+};
+
 const buildRoot = (login: string, password: string, body: string) =>
   `<?xml version="1.0" encoding="utf-8"?>
 <root>
@@ -223,7 +235,7 @@ serve(async (request) => {
     );
   }
 
-  if (checkOut <= checkIn) {
+  if (!isCheckOutAfterCheckIn(checkIn, checkOut)) {
     return jsonResponse(
       { error: "Check-out must be after check-in" },
       400,

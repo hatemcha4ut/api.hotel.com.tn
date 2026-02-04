@@ -22,7 +22,7 @@ create table if not exists public.suppliers_config (
 );
 
 insert into public.suppliers_config (name, is_enabled, prod_url, test_url)
-values ('MyGo', true, 'https://admin.mygo.co/api/hotel/', 'https://admin.mygo.co/api/hotel/')
+values ('MyGo', true, 'https://admin.mygo.co/api/hotel/', null)
 on conflict (name) do update
 set is_enabled = excluded.is_enabled,
     prod_url = excluded.prod_url,
