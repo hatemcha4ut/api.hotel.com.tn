@@ -223,6 +223,14 @@ serve(async (request) => {
     );
   }
 
+  if (checkOut <= checkIn) {
+    return jsonResponse(
+      { error: "Check-out must be after check-in" },
+      400,
+      allowedOrigin,
+    );
+  }
+
   const supabase = createClient(supabaseUrl, supabaseKey);
   const { data: cityData, error: cityError } = await supabase
     .from("mygo_cities")
