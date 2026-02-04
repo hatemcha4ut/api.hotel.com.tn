@@ -168,6 +168,7 @@ const parseSearchResponse = (
 
 // Call MyGo HotelSearch SOAP endpoint
 // This function is used internally by create-booking to get a fresh token
+// NOTE: This is an idempotent operation - retries are safe if needed
 export const callHotelSearch = async (
   params: HotelSearchParams,
 ): Promise<{ error?: string; result?: HotelSearchResult }> => {
@@ -242,6 +243,9 @@ const parseBookingResponse = (
 };
 
 // Call MyGo BookingCreation SOAP endpoint with PreBooking=true
+// NOTE: This is a NON-IDEMPOTENT operation - DO NOT retry automatically
+// Each call may create a new booking, so retries must be handled carefully
+// Only the caller (create-booking endpoint) should decide whether to retry
 export const callBookingCreation = async (
   token: string,
   bookingData: Record<string, unknown>,
