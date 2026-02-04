@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
+// MyGo SOAP endpoint uses HTTP; no HTTPS endpoint is available for this API.
+// The API also provides no request-level auth or signing for the search action.
+// Only non-sensitive search parameters are sent to this endpoint.
+// Apply rate limiting upstream to reduce exposure over HTTP.
 const SOAP_ENDPOINT = "http://api.mygo.tn/HotelService.asmx";
 const SOAP_ACTION = "http://tempuri.org/Search";
 
@@ -8,13 +12,16 @@ const allowedOrigins = new Set([
   "https://admin.hotel.com.tn",
 ]);
 
-const corsHeaders = (origin: string) => ({
-  "Access-Control-Allow-Origin": origin,
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-  "Vary": "Origin",
-});
+const corsHeaders = (origin: string) =>
+  allowedOrigins.has(origin)
+    ? {
+      "Access-Control-Allow-Origin": origin,
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers":
+        "authorization, x-client-info, apikey, content-type",
+      "Vary": "Origin",
+    }
+    : {};
 
 const jsonResponse = (
   body: Record<string, unknown> | unknown[],
@@ -30,6 +37,9 @@ const jsonResponse = (
   });
 
 const normalizeValue = (value: unknown) => {
+  if (value === null || value === undefined || typeof value === "boolean") {
+    return "";
+  }
   if (typeof value === "string") {
     return value.trim();
   }
@@ -47,13 +57,15 @@ const escapeXml = (value: string) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
 
-const decodeXmlEntities = (value: string) =>
-  value
+const decodeXmlEntities = (value: string) => {
+  const decodedWithoutAmpersand = value
     .replaceAll("&lt;", "<")
     .replaceAll("&gt;", ">")
     .replaceAll("&quot;", '"')
-    .replaceAll("&apos;", "'")
-    .replaceAll("&amp;", "&");
+    .replaceAll("&apos;", "'");
+  // Decode ampersand last to avoid double-decoding.
+  return decodedWithoutAmpersand.replaceAll("&amp;", "&");
+};
 
 const buildSoapEnvelope = (
   cityId: string,
@@ -73,7 +85,7 @@ const buildSoapEnvelope = (
   </soap:Body>
 </soap:Envelope>`;
 
-type XmlNode = Document | Element;
+type XmlContainer = Document | Element;
 
 const elementToObject = (element: Element): Record<string, unknown> => {
   const children = Array.from(element.children);
@@ -88,7 +100,11 @@ const elementToObject = (element: Element): Record<string, unknown> => {
         : child.textContent?.trim() ?? "";
     if (key in result) {
       const existing = result[key];
-      result[key] = Array.isArray(existing) ? [...existing, value] : [existing, value];
+      if (Array.isArray(existing)) {
+        existing.push(value);
+      } else {
+        result[key] = [existing, value];
+      }
     } else {
       result[key] = value;
     }
@@ -108,7 +124,7 @@ const parseEmbeddedXml = (content: string) => {
   return parsed;
 };
 
-const extractHotels = (root: XmlNode): Record<string, unknown>[] => {
+const extractHotels = (root: XmlContainer): Record<string, unknown>[] => {
   const candidates = [
     "Hotel",
     "hotel",
@@ -145,7 +161,7 @@ const parseSoapResponse = (
     return { error: faultString || "SOAP fault received" };
   }
 
-  let root: XmlNode = document;
+  let root: XmlContainer = document;
   const searchResult = document.getElementsByTagName("SearchResult")[0];
   const searchContent = searchResult?.textContent?.trim();
   if (searchResult && searchContent) {
@@ -161,7 +177,7 @@ serve(async (request) => {
   const allowedOrigin = allowedOrigins.has(origin) ? origin : "";
 
   if (origin && !allowedOrigin) {
-    return new Response("Origin not allowed", { status: 403 });
+    return jsonResponse({ error: "Origin not allowed" }, 403);
   }
 
   if (request.method === "OPTIONS") {
@@ -172,10 +188,7 @@ serve(async (request) => {
   }
 
   if (request.method !== "POST") {
-    return new Response("Method not allowed", {
-      status: 405,
-      headers: allowedOrigin ? corsHeaders(allowedOrigin) : {},
-    });
+    return jsonResponse({ error: "Method not allowed" }, 405, allowedOrigin);
   }
 
   let payload: {
@@ -211,17 +224,13 @@ serve(async (request) => {
       method: "POST",
       headers: {
         "Content-Type": "text/xml; charset=utf-8",
-        SOAPAction: SOAP_ACTION,
+        SOAPAction: `"${SOAP_ACTION}"`,
       },
       body: soapEnvelope,
     });
-  } catch (error) {
+  } catch {
     return jsonResponse(
-      {
-        error: error instanceof Error
-          ? error.message
-          : "Network error: Failed to reach SOAP API",
-      },
+      { error: "Failed to connect to hotel search service" },
       502,
       allowedOrigin,
     );
@@ -230,8 +239,11 @@ serve(async (request) => {
   const responseText = await response.text();
   if (!response.ok) {
     const parsedError = parseSoapResponse(responseText);
+    const statusLabel = response.statusText
+      ? `${response.status} ${response.statusText}`
+      : `${response.status}`;
     return jsonResponse(
-      { error: parsedError.error || `SOAP request failed (${response.status})` },
+      { error: parsedError.error || `SOAP request failed (${statusLabel})` },
       502,
       allowedOrigin,
     );
