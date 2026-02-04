@@ -89,7 +89,7 @@ export const requireAdmin = async (request: Request): Promise<void> => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
   const { data: adminUser } = await supabase
     .from("admin_users")
-    .select("id")
+    .select("user_id")
     .eq("user_id", user.userId)
     .maybeSingle();
 

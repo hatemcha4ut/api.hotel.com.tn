@@ -163,17 +163,43 @@ export const validateSearchParams = (params: unknown): SearchParams => {
 
 /**
  * Validate email format
+ * Using a more robust pattern that rejects invalid emails
  */
 export const isValidEmail = (email: string): boolean => {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  // More strict email validation
+  // - Must have exactly one @ symbol
+  // - Local part (before @) must start with alphanumeric
+  // - Domain must have at least one dot and valid TLD
+  const emailPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]*@[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  return emailPattern.test(email) && !email.includes("..") && !email.includes("@.");
 };
 
 /**
- * Validate phone format (basic check)
+ * Validate phone format
+ * More structured validation for international phone numbers
  */
 export const isValidPhone = (phone: string): boolean => {
-  // Allow international format with + and digits
-  return /^\+?[\d\s\-()]+$/.test(phone) && phone.replace(/\D/g, "").length >= 8;
+  // Remove all non-digit characters for counting
+  const digitsOnly = phone.replace(/\D/g, "");
+  
+  // Must have 8-15 digits (international standard)
+  if (digitsOnly.length < 8 || digitsOnly.length > 15) {
+    return false;
+  }
+  
+  // Allow: optional +, digits, spaces, hyphens, parentheses
+  // But enforce structure: can't have multiple consecutive special chars
+  const phonePattern = /^\+?[\d\s\-()]+$/;
+  if (!phonePattern.test(phone)) {
+    return false;
+  }
+  
+  // Reject multiple consecutive special characters
+  if (/[^\d]{2,}/.test(phone.replace(/^\+/, ""))) {
+    return false;
+  }
+  
+  return true;
 };
 
 /**

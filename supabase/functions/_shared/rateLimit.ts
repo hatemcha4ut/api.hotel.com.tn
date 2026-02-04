@@ -38,7 +38,7 @@ export const getClientIp = (request: Request): string => {
   const xForwardedFor = request.headers.get("x-forwarded-for");
   if (xForwardedFor) {
     const firstIp = xForwardedFor.split(",")[0].trim();
-    if (firstIp) {
+    if (firstIp && firstIp.length > 0) {
       return firstIp;
     }
   }

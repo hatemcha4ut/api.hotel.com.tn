@@ -67,8 +67,7 @@ const setCache = async (
   const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
 
   // Verify value doesn't contain token before caching
-  const valueStr = JSON.stringify(value);
-  if (valueStr.includes('"token"')) {
+  if (value && typeof value === "object" && "token" in value) {
     console.error("SECURITY: Attempted to cache response with token field");
     throw new Error("Cannot cache response containing token");
   }
@@ -152,8 +151,7 @@ serve(async (request) => {
 
     if (cached) {
       // Verify cached response doesn't contain token
-      const cachedStr = JSON.stringify(cached);
-      if (cachedStr.includes('"token"')) {
+      if (cached && typeof cached === "object" && "token" in cached) {
         console.error("SECURITY: Cached data contains token field, invalidating cache");
         // Delete the corrupted cache entry
         await supabase.from("search_cache").delete().eq("key", cacheKey);
