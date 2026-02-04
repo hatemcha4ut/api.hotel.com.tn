@@ -1,37 +1,16 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { verify } from "https://deno.land/x/djwt@v2.8/mod.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import {
+  searchHotels,
   createBooking,
   type MyGoCredential,
   type MyGoBookingParams,
+  type MyGoSearchParams,
 } from "../_shared/lib/mygoClient.ts";
-
-const allowedOrigins = new Set([
-  "https://www.hotel.com.tn",
-  "https://admin.hotel.com.tn",
-]);
-
-const corsHeaders = (origin: string) => ({
-  "Access-Control-Allow-Origin": origin,
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-  "Vary": "Origin",
-});
-
-const jsonResponse = (
-  body: Record<string, unknown>,
-  status: number,
-  origin?: string,
-) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      ...(origin ? corsHeaders(origin) : {}),
-    },
-  });
+import { getCorsHeaders, handleOptions, jsonResponse, isOriginAllowed } from "../_shared/cors.ts";
+import { requireUserJWT, createAuthenticatedClient } from "../_shared/auth.ts";
+import { validateSearchParams, requireString, isValidEmail, isValidPhone } from "../_shared/validation.ts";
+import { formatError, ValidationError, ExternalServiceError } from "../_shared/errors.ts";
 
 // Hash token for secure storage (never store plain token)
 const hashToken = async (token: string): Promise<string> => {
@@ -42,23 +21,9 @@ const hashToken = async (token: string): Promise<string> => {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 };
 
-const parseJwtHeader = (token: string) => {
-  const [header] = token.split(".");
-  if (!header) {
-    throw new Error("JWT header missing");
-  }
-  const base64 = header.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
-  const json = atob(padded);
-  return JSON.parse(json) as { alg?: string };
-};
-
-const verifyJwtClaims = async (
-  token: string,
-  secret: string,
-  algorithm: "HS256",
-) => (await verify(token, secret, algorithm)) as Record<string, unknown>;
-
+/**
+ * Get MyGo credentials from environment
+ */
 const getMyGoCredential = (): MyGoCredential => {
   const login = Deno.env.get("MYGO_LOGIN");
   const password = Deno.env.get("MYGO_PASSWORD");
@@ -72,175 +37,135 @@ const getMyGoCredential = (): MyGoCredential => {
 
 serve(async (request) => {
   const origin = request.headers.get("Origin") ?? "";
-  const allowedOrigin = allowedOrigins.has(origin) ? origin : "";
 
-  if (origin && !allowedOrigin) {
-    return new Response("Origin not allowed", { status: 403 });
+  // Check origin
+  if (origin && !isOriginAllowed(origin)) {
+    return jsonResponse({ error: "Origin not allowed" }, 403);
   }
 
+  // Handle OPTIONS preflight
   if (request.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: allowedOrigin ? corsHeaders(allowedOrigin) : {},
-    });
+    return handleOptions(origin);
   }
 
+  // Only POST allowed
   if (request.method !== "POST") {
-    return new Response("Method not allowed", {
-      status: 405,
-      headers: allowedOrigin ? corsHeaders(allowedOrigin) : {},
-    });
+    return jsonResponse({ error: "Method not allowed" }, 405, origin);
   }
 
-  const authHeader = request.headers.get("Authorization") ?? "";
-  if (!authHeader.toLowerCase().startsWith("bearer ")) {
-    return jsonResponse({ error: "Missing bearer token" }, 401, allowedOrigin);
-  }
-
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY");
-  const jwtSecret = Deno.env.get("SUPABASE_JWT_SECRET");
-  if (!supabaseUrl || !supabaseKey || !jwtSecret) {
-    return jsonResponse(
-      { error: "Supabase configuration missing" },
-      500,
-      allowedOrigin,
-    );
-  }
-
-  const token = authHeader.slice("Bearer ".length).trim();
   try {
-    const header = parseJwtHeader(token);
-    if (header.alg !== "HS256") {
-      return jsonResponse(
-        { error: "Unsupported JWT algorithm" },
-        401,
-        allowedOrigin,
-      );
+    // Require JWT authentication
+    const user = await requireUserJWT(request);
+
+    // Parse request body
+    let payload: unknown;
+    try {
+      payload = await request.json();
+    } catch {
+      throw new ValidationError("Invalid JSON payload");
     }
-  } catch (error) {
-    return jsonResponse(
-      { error: error instanceof Error ? error.message : "Invalid token" },
-      401,
-      allowedOrigin,
-    );
-  }
 
-  const algorithm = "HS256";
-  let claims: Record<string, unknown>;
-  try {
-    claims = await verifyJwtClaims(token, jwtSecret, algorithm);
-  } catch (error) {
-    return jsonResponse(
-      { error: error instanceof Error ? error.message : "Invalid token" },
-      401,
-      allowedOrigin,
-    );
-  }
-
-  // Parse request body
-  let payload: {
-    token?: string;
-    preBooking?: boolean;
-    customerName?: string;
-    customerEmail?: string;
-    customerPhone?: string;
-    roomSelections?: Array<{
-      hotelId: number;
-      roomId: number;
-    }>;
-  };
-
-  try {
-    payload = await request.json();
-  } catch {
-    return jsonResponse({ error: "Invalid JSON payload" }, 400, allowedOrigin);
-  }
-
-  // Validate required fields
-  if (!payload.token || typeof payload.token !== "string") {
-    return jsonResponse(
-      { error: "token is required (from search-hotels)" },
-      400,
-      allowedOrigin,
-    );
-  }
-
-  if (!payload.customerName || typeof payload.customerName !== "string") {
-    return jsonResponse(
-      { error: "customerName is required" },
-      400,
-      allowedOrigin,
-    );
-  }
-
-  if (!payload.customerEmail || typeof payload.customerEmail !== "string") {
-    return jsonResponse(
-      { error: "customerEmail is required" },
-      400,
-      allowedOrigin,
-    );
-  }
-
-  if (!payload.customerPhone || typeof payload.customerPhone !== "string") {
-    return jsonResponse(
-      { error: "customerPhone is required" },
-      400,
-      allowedOrigin,
-    );
-  }
-
-  if (
-    !Array.isArray(payload.roomSelections) ||
-    payload.roomSelections.length === 0
-  ) {
-    return jsonResponse(
-      { error: "roomSelections array is required (at least 1 room)" },
-      400,
-      allowedOrigin,
-    );
-  }
-
-  // Validate room selections
-  for (const selection of payload.roomSelections) {
-    if (
-      !selection ||
-      typeof selection.hotelId !== "number" ||
-      typeof selection.roomId !== "number"
-    ) {
-      return jsonResponse(
-        { error: "Each roomSelection must have hotelId and roomId (numbers)" },
-        400,
-        allowedOrigin,
-      );
+    if (!payload || typeof payload !== "object") {
+      throw new ValidationError("Request body must be an object");
     }
-  }
 
-  const supabase = createClient(supabaseUrl, supabaseKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
+    const body = payload as Record<string, unknown>;
 
-  // Default to preBooking=true (recommended)
-  const preBooking = payload.preBooking ?? true;
+    // NEW INPUT STRUCTURE: { searchParams, selectedOffer, guestData, preBooking }
+    
+    // Validate searchParams
+    if (!body.searchParams) {
+      throw new ValidationError("searchParams is required");
+    }
+    const searchParams = validateSearchParams(body.searchParams);
 
-  const bookingParams: MyGoBookingParams = {
-    token: payload.token,
-    preBooking,
-    customerName: payload.customerName,
-    customerEmail: payload.customerEmail,
-    customerPhone: payload.customerPhone,
-    roomSelections: payload.roomSelections,
-  };
+    // Validate selectedOffer
+    if (!body.selectedOffer || typeof body.selectedOffer !== "object") {
+      throw new ValidationError("selectedOffer is required (object)");
+    }
+    const selectedOffer = body.selectedOffer as Record<string, unknown>;
 
-  try {
-    // Call MyGo BookingCreation API
+    if (typeof selectedOffer.hotelId !== "number") {
+      throw new ValidationError("selectedOffer.hotelId is required (number)");
+    }
+    if (typeof selectedOffer.roomId !== "number") {
+      throw new ValidationError("selectedOffer.roomId is required (number)");
+    }
+
+    // Validate guestData
+    if (!body.guestData || typeof body.guestData !== "object") {
+      throw new ValidationError("guestData is required (object)");
+    }
+    const guestData = body.guestData as Record<string, unknown>;
+
+    const customerName = requireString(guestData.name, "guestData.name");
+    const customerEmail = requireString(guestData.email, "guestData.email");
+    const customerPhone = requireString(guestData.phone, "guestData.phone");
+
+    // Validate email and phone format
+    if (!isValidEmail(customerEmail)) {
+      throw new ValidationError("guestData.email must be a valid email address");
+    }
+    if (!isValidPhone(customerPhone)) {
+      throw new ValidationError("guestData.phone must be a valid phone number");
+    }
+
+    // Default to preBooking=true (recommended)
+    const preBooking = typeof body.preBooking === "boolean" ? body.preBooking : true;
+
+    // STEP 1: Server-side call to MyGo HotelSearch to get fresh token
     const credential = getMyGoCredential();
-    const myGoResponse = await createBooking(credential, bookingParams);
+    
+    const mygoSearchParams: MyGoSearchParams = {
+      cityId: searchParams.cityId,
+      checkIn: searchParams.checkIn,
+      checkOut: searchParams.checkOut,
+      rooms: searchParams.rooms,
+      currency: searchParams.currency,
+      onlyAvailable: true,
+    };
 
-    // Hash token for storage (never store plain token)
-    const tokenHash = await hashToken(payload.token);
+    let freshToken: string;
+    try {
+      const searchResult = await searchHotels(credential, mygoSearchParams);
+      freshToken = searchResult.token;
+      // Token stays in memory only, never sent to client or stored
+    } catch (error) {
+      console.error("Failed to get fresh search token:", error);
+      throw new ExternalServiceError(
+        "Failed to retrieve booking token from MyGo",
+        "MyGo HotelSearch"
+      );
+    }
 
-    // Store booking record in mygo_bookings table
+    // STEP 2: Call BookingCreation with fresh token
+    const bookingParams: MyGoBookingParams = {
+      token: freshToken,
+      preBooking,
+      customerName,
+      customerEmail,
+      customerPhone,
+      roomSelections: [{
+        hotelId: selectedOffer.hotelId as number,
+        roomId: selectedOffer.roomId as number,
+      }],
+    };
+
+    let myGoResponse;
+    try {
+      myGoResponse = await createBooking(credential, bookingParams);
+    } catch (error) {
+      console.error("MyGo booking creation failed:", error);
+      throw new ExternalServiceError(
+        error instanceof Error ? error.message : "Booking creation failed",
+        "MyGo BookingCreation"
+      );
+    }
+
+    // STEP 3: Store booking record in database
+    const supabase = createAuthenticatedClient(request);
+    const tokenHash = await hashToken(freshToken);
+
     const { data: bookingRecord, error: dbError } = await supabase
       .from("mygo_bookings")
       .insert({
@@ -250,10 +175,11 @@ serve(async (request) => {
         state: myGoResponse.state ?? null,
         total_price: myGoResponse.totalPrice ?? null,
         request_json: {
-          customerName: payload.customerName,
-          customerEmail: payload.customerEmail,
-          customerPhone: payload.customerPhone,
-          roomSelections: payload.roomSelections,
+          customerName,
+          customerEmail,
+          customerPhone,
+          roomSelections: bookingParams.roomSelections,
+          searchParams: mygoSearchParams,
           preBooking,
         },
         response_json: myGoResponse,
@@ -261,40 +187,48 @@ serve(async (request) => {
       .select()
       .single();
 
+    // STEP 4: Handle DB tracking failure gracefully
     if (dbError) {
-      console.error("CRITICAL: Failed to store booking record. Error:", {
+      console.error("CRITICAL: Booking created in MyGo but DB tracking failed:", {
         message: dbError.message,
         code: dbError.code,
-        details: dbError.details,
         myGoBookingId: myGoResponse.bookingId,
+        userId: user.userId,
       });
-      // Return 500 since we cannot track the booking
+
+      // Return 200 to avoid retry and double booking
       return jsonResponse(
         {
-          error: "Booking created in MyGo but failed to store record. Contact support with booking ID.",
-          myGoBookingId: myGoResponse.bookingId,
+          bookingCreated: true,
+          trackingSaved: false,
+          bookingId: myGoResponse.bookingId,
+          warning: "Booking was created but tracking record failed. Contact support with this booking ID.",
+          ...myGoResponse,
         },
-        500,
-        allowedOrigin,
+        200,
+        origin,
       );
     }
 
+    // Success - both booking and tracking saved
     return jsonResponse(
       {
+        bookingCreated: true,
+        trackingSaved: true,
         ...myGoResponse,
         recordId: bookingRecord.id,
       },
       200,
-      allowedOrigin,
+      origin,
     );
   } catch (error) {
     console.error("Booking error:", error);
-    return jsonResponse(
-      {
-        error: error instanceof Error ? error.message : "Booking creation failed",
-      },
-      502,
-      allowedOrigin,
-    );
+
+    const errorResponse = formatError(error);
+    const statusCode = error instanceof ValidationError ? 400
+      : error instanceof ExternalServiceError ? 502
+      : 500;
+
+    return jsonResponse(errorResponse, statusCode, origin);
   }
 });

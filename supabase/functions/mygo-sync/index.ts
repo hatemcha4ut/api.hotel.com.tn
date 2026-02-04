@@ -5,12 +5,9 @@ import {
   type MyGoCity,
   type MyGoCredential,
 } from "../_shared/lib/mygoClient.ts";
-
-const jsonResponse = (body: Record<string, unknown>, status: number) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+import { requireAdmin } from "../_shared/auth.ts";
+import { jsonResponse } from "../_shared/cors.ts";
+import { formatError, ValidationError } from "../_shared/errors.ts";
 
 const getMyGoCredential = (): MyGoCredential => {
   const login = Deno.env.get("MYGO_LOGIN");
@@ -55,82 +52,45 @@ const syncCities = async (supabase: ReturnType<typeof createClient>) => {
 };
 
 serve(async (request) => {
+  // Only POST allowed
   if (request.method !== "POST") {
     return jsonResponse({ error: "Method not allowed" }, 405);
   }
 
-  // Check for JWT auth
-  const authHeader = request.headers.get("Authorization");
-  if (!authHeader || !authHeader.toLowerCase().startsWith("bearer ")) {
-    return jsonResponse({ error: "Missing or invalid Authorization header" }, 401);
-  }
-
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const jwtSecret = Deno.env.get("SUPABASE_JWT_SECRET");
-
-  if (!supabaseUrl || !supabaseServiceKey || !jwtSecret) {
-    return jsonResponse(
-      { error: "Supabase configuration missing" },
-      500,
-    );
-  }
-
-  // Verify JWT
-  const token = authHeader.slice("Bearer ".length).trim();
   try {
-    const { verify } = await import("https://deno.land/x/djwt@v2.8/mod.ts");
-    const payload = await verify(token, jwtSecret, "HS256") as Record<string, unknown>;
+    // Require admin authentication
+    await requireAdmin(request);
 
-    // Check if user is admin or service role
-    const role = payload.role as string | undefined;
-    if (role !== "service_role" && role !== "authenticated") {
-      return jsonResponse({ error: "Insufficient permissions" }, 403);
+    // Parse request body
+    let payload: unknown;
+    try {
+      payload = await request.json();
+    } catch {
+      throw new ValidationError("Invalid JSON payload");
     }
 
-    // For authenticated users, check admin_users table
-    if (role === "authenticated") {
-      const userId = payload.sub as string | undefined;
-      if (!userId) {
-        return jsonResponse({ error: "Invalid token" }, 401);
-      }
-
-      const supabase = createClient(supabaseUrl, supabaseServiceKey);
-      const { data: adminUser } = await supabase
-        .from("admin_users")
-        .select("user_id")
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      if (!adminUser) {
-        return jsonResponse({ error: "Admin access required" }, 403);
-      }
+    if (!payload || typeof payload !== "object") {
+      throw new ValidationError("Request body must be an object");
     }
-  } catch (error) {
-    return jsonResponse(
-      { error: error instanceof Error ? error.message : "Invalid token" },
-      401,
-    );
-  }
 
-  // Parse request body
-  let payload: { action?: string };
-  try {
-    payload = await request.json();
-  } catch {
-    return jsonResponse({ error: "Invalid JSON payload" }, 400);
-  }
+    const body = payload as Record<string, unknown>;
+    const action = typeof body.action === "string" ? body.action.toLowerCase() : "";
 
-  const action = payload.action?.toLowerCase();
+    if (!action) {
+      throw new ValidationError("Missing action parameter");
+    }
 
-  if (!action) {
-    return jsonResponse({ error: "Missing action parameter" }, 400);
-  }
+    // Get Supabase configuration
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-  // Create Supabase client with service role
-  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error("Supabase configuration missing");
+    }
 
-  try {
+    // Create Supabase client with service role
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
     switch (action) {
       case "cities": {
         const result = await syncCities(supabase);
@@ -153,18 +113,16 @@ serve(async (request) => {
       }
 
       default:
-        return jsonResponse(
-          { error: `Unknown action: ${action}. Valid actions: cities, hotels` },
-          400,
+        throw new ValidationError(
+          `Unknown action: ${action}. Valid actions: cities, hotels`,
         );
     }
   } catch (error) {
     console.error("Sync error:", error);
-    return jsonResponse(
-      {
-        error: error instanceof Error ? error.message : "Sync failed",
-      },
-      500,
-    );
+
+    const errorResponse = formatError(error);
+    const statusCode = error instanceof ValidationError ? 400 : 500;
+
+    return jsonResponse(errorResponse, statusCode);
   }
 });

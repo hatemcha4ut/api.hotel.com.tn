@@ -54,9 +54,10 @@ Searches for available hotels using MyGo HotelSearch API.
 
 **Security**:
 - CORS restricted to `https://www.hotel.com.tn` and `http://localhost:5173`
-- Rate limited: 60 requests/hour per IP
-- Cached responses: 120 seconds TTL
+- Rate limited: 60 requests/hour per IP (using hashed IP addresses for privacy)
+- Cached responses: 120 seconds TTL (cache is token-free)
 - Only returns real-time bookable inventory (Available=true, OnRequest=false)
+- **BREAKING CHANGE (PR13)**: Token is NO LONGER returned to client
 
 **Request**:
 ```bash
@@ -80,7 +81,6 @@ curl -X POST https://your-project.supabase.co/functions/v1/search-hotels \
 **Response**:
 ```json
 {
-  "token": "abc123xyz...",
   "hotels": [
     {
       "id": 101,
@@ -97,7 +97,7 @@ curl -X POST https://your-project.supabase.co/functions/v1/search-hotels \
 }
 ```
 
-**IMPORTANT**: Save the `token` from the response - it's required for booking creation.
+**IMPORTANT**: Token is NO LONGER returned. The server fetches a fresh token during booking creation.
 
 ### 3. create-booking (PRIVATE)
 
@@ -109,29 +109,43 @@ Creates a booking using MyGo BookingCreation API.
 
 **Default Behavior**: PreBooking=true (recommended before final confirmation)
 
-**Request**:
+**NEW INPUT STRUCTURE (PR13)**:
 ```bash
 curl -X POST https://your-project.supabase.co/functions/v1/create-booking \
   -H "Authorization: Bearer YOUR_USER_JWT" \
   -H "Content-Type: application/json" \
+  -H "Origin: https://www.hotel.com.tn" \
   -d '{
-    "token": "abc123xyz...",
-    "preBooking": true,
-    "customerName": "John Doe",
-    "customerEmail": "john@example.com",
-    "customerPhone": "+216123456789",
-    "roomSelections": [
-      {
-        "hotelId": 101,
-        "roomId": 201
-      }
-    ]
+    "searchParams": {
+      "cityId": 1,
+      "checkIn": "2026-03-15",
+      "checkOut": "2026-03-20",
+      "rooms": [
+        {
+          "adults": 2,
+          "childrenAges": [5, 8]
+        }
+      ],
+      "currency": "TND"
+    },
+    "selectedOffer": {
+      "hotelId": 101,
+      "roomId": 201
+    },
+    "guestData": {
+      "name": "John Doe",
+      "email": "john@example.com",
+      "phone": "+216123456789"
+    },
+    "preBooking": true
   }'
 ```
 
-**Response**:
+**Response (Success)**:
 ```json
 {
+  "bookingCreated": true,
+  "trackingSaved": true,
   "bookingId": 12345,
   "state": "confirmed",
   "totalPrice": 750.50,
@@ -139,10 +153,28 @@ curl -X POST https://your-project.supabase.co/functions/v1/create-booking \
 }
 ```
 
+**Response (Booking created but tracking failed)**:
+```json
+{
+  "bookingCreated": true,
+  "trackingSaved": false,
+  "bookingId": 12345,
+  "state": "confirmed",
+  "totalPrice": 750.50,
+  "warning": "Booking was created but tracking record failed. Contact support with this booking ID."
+}
+```
+
+**IMPORTANT CHANGE (PR13)**: 
+- Token is NO LONGER accepted from client
+- Server fetches fresh token from MyGo using searchParams
+- Token never leaves the server (memory only)
+- This prevents token exposure and cache pollution
+
 ## MyGo Protocol Notes
 
 1. **Authentication**: Credentials (MYGO_LOGIN, MYGO_PASSWORD) are embedded in XML request body, not HTTP headers
-2. **Token Flow**: HotelSearch returns a Token → Token is used in BookingCreation
+2. **Token Flow (UPDATED)**: Server calls HotelSearch to get fresh Token → Token is used in BookingCreation (all server-side)
 3. **PreBooking**: Set `preBooking: true` for tentative bookings before final confirmation
 4. **Bookable Inventory**: Only hotels with `Available=true` and rooms with `OnRequest=false` are returned
 5. **OnlyAvailable**: Always set to `true` in HotelSearch requests for real-time availability
@@ -167,19 +199,33 @@ MYGO_PASSWORD=your-mygo-password
 
 - `mygo_cities` - Static city data from MyGo ListCity
 - `mygo_hotels` - Static hotel data from MyGo ListHotel
-- `rate_limits` - Rate limiting for public endpoints
-- `search_cache` - Short-lived cache for search results (120s TTL)
+- `rate_limits` - Rate limiting for public endpoints (uses hashed IP addresses)
+- `search_cache` - Short-lived cache for search results (120s TTL, **token-free**)
 - `mygo_bookings` - Booking records (stores token_hash, never plain token)
 
 ## Security Features
 
 - ✅ No credentials in logs or client responses
+- ✅ **NEW (PR13)**: Search token never sent to client or cached
 - ✅ Token hashing (SHA-256) before database storage
-- ✅ Rate limiting on public endpoints
-- ✅ CORS allowlist enforcement
+- ✅ Rate limiting on public endpoints (60/hour per IP with hashed storage)
+- ✅ CORS allowlist enforcement (`https://www.hotel.com.tn`, `http://localhost:5173`)
 - ✅ JWT authentication for private endpoints
+- ✅ Unified authentication middleware with admin checks
 - ✅ Input validation and sanitization
 - ✅ XML injection prevention (proper escaping)
+- ✅ 30-second timeout on MyGo API calls
+- ✅ No retries on non-idempotent operations (BookingCreation)
+- ✅ Graceful DB failure handling (prevents double bookings)
+
+## Shared Middleware (PR13)
+
+Located in `supabase/functions/_shared/`:
+- **cors.ts**: Unified CORS handling with origin allowlist
+- **auth.ts**: JWT validation (`requireUserJWT`, `requireAdmin`)
+- **rateLimit.ts**: IP-based rate limiting with hashed storage
+- **validation.ts**: Shared input validation helpers
+- **errors.ts**: Unified error types and formatting
 
 ## Development
 
@@ -194,4 +240,7 @@ supabase functions deploy create-booking
 
 # Run migrations
 supabase db push
+
+# Run tests
+deno test supabase/functions/_shared/token-security.test.ts
 ```
