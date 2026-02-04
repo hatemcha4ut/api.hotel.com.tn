@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<HotelSearchResponse>
+  <Hotels>
+    <Hotel>
+      <Id>123</Id>
+      <Name>Sample Hotel</Name>
+    </Hotel>
+  </Hotels>
+</HotelSearchResponse>

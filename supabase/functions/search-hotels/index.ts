@@ -1,11 +1,8 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { parseXmlResponse } from "./xml.ts";
 
-// MyGo SOAP endpoint uses HTTP; no HTTPS endpoint is available for this API.
-// The API also provides no request-level auth or signing for the search action.
-// Only non-sensitive search parameters are sent to this endpoint.
-// Apply rate limiting upstream to reduce exposure over HTTP.
-const SOAP_ENDPOINT = "http://api.mygo.tn/HotelService.asmx";
-const SOAP_ACTION = "http://tempuri.org/Search";
+const MYGO_ENDPOINT = "https://admin.mygo.co/api/hotel";
 
 const allowedOrigins = new Set([
   "https://www.hotel.com.tn",
@@ -49,6 +46,19 @@ const normalizeValue = (value: unknown) => {
   return "";
 };
 
+const normalizeNumber = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.floor(value));
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, Math.floor(parsed));
+    }
+  }
+  return 0;
+};
+
 const escapeXml = (value: string) =>
   value
     .replaceAll("&", "&amp;")
@@ -57,119 +67,108 @@ const escapeXml = (value: string) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
 
-const decodeXmlEntities = (value: string) => {
-  const decodedWithoutAmpersand = value
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&apos;", "'");
-  // Decode ampersand last to avoid double-decoding.
-  return decodedWithoutAmpersand.replaceAll("&amp;", "&");
+type SearchPayload = {
+  cityId?: string | number;
+  checkIn?: string;
+  checkOut?: string;
+  occupancy?: string | number;
+  adults?: string | number;
+  children?: number[] | string[];
+  hotelName?: string;
+  onlyAvailable?: boolean;
 };
 
-const buildSoapEnvelope = (
+type CityLookup = {
+  mygo_id: string;
+  name: string | null;
+};
+
+const buildHotelSearchXml = (
+  login: string,
+  password: string,
   cityId: string,
   checkIn: string,
   checkOut: string,
-  occupancy: string,
-) =>
-  `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <Search xmlns="http://tempuri.org/">
-      <cityId>${escapeXml(cityId)}</cityId>
-      <checkIn>${escapeXml(checkIn)}</checkIn>
-      <checkOut>${escapeXml(checkOut)}</checkOut>
-      <occupancy>${escapeXml(occupancy)}</occupancy>
-    </Search>
-  </soap:Body>
-</soap:Envelope>`;
+  adults: number,
+  children: number[],
+  hotelName: string,
+  onlyAvailable: boolean,
+) => {
+  const childrenXml = children.map((child) =>
+    `      <Child>${escapeXml(child.toString())}</Child>`
+  ).join("\n");
+  const keywordValue = hotelName ? escapeXml(hotelName) : "";
+  return `<?xml version="1.0" encoding="utf-8"?>
+<HotelSearch>
+  <Credential>
+    <Login>${escapeXml(login)}</Login>
+    <Password>${escapeXml(password)}</Password>
+  </Credential>
+  <SearchDetails>
+    <BookingDetails>
+      <CheckIn>${escapeXml(checkIn)}</CheckIn>
+      <CheckOut>${escapeXml(checkOut)}</CheckOut>
+      <City>${escapeXml(cityId)}</City>
+    </BookingDetails>
+    <Filters>
+      <Keywords>${keywordValue}</Keywords>
+      <OnlyAvailable>${onlyAvailable ? "true" : "false"}</OnlyAvailable>
+    </Filters>
+    <Rooms>
+      <Room>
+        <Adult>${escapeXml(adults.toString())}</Adult>
+${childrenXml ? `${childrenXml}\n` : ""}      </Room>
+    </Rooms>
+  </SearchDetails>
+</HotelSearch>`;
+};
 
-type XmlContainer = Document | Element;
+const buildAuthHeader = (login: string, password: string) =>
+  `Basic ${btoa(`${login}:${password}`)}`;
 
-const elementToObject = (element: Element): Record<string, unknown> => {
-  const children = Array.from(element.children);
-  if (!children.length) {
-    return { value: element.textContent?.trim() ?? "" };
+const resolveCity = async (
+  supabase: ReturnType<typeof createClient>,
+  cityId: string,
+): Promise<CityLookup | null> => {
+  const { data: byMygoId, error: mygoError } = await supabase
+    .from("mygo_cities")
+    .select("mygo_id,name")
+    .eq("mygo_id", cityId)
+    .maybeSingle();
+
+  if (mygoError) {
+    throw new Error(mygoError.message);
   }
-  return children.reduce<Record<string, unknown>>((result, child) => {
-    const key = child.tagName;
-    const value =
-      child.children.length > 0
-        ? elementToObject(child)
-        : child.textContent?.trim() ?? "";
-    if (key in result) {
-      const existing = result[key];
-      if (Array.isArray(existing)) {
-        existing.push(value);
-      } else {
-        result[key] = [existing, value];
-      }
-    } else {
-      result[key] = value;
+
+  if (byMygoId) {
+    return byMygoId as CityLookup;
+  }
+
+  if (/^\d+$/.test(cityId)) {
+    const { data: byId, error: idError } = await supabase
+      .from("mygo_cities")
+      .select("mygo_id,name")
+      .eq("id", Number(cityId))
+      .maybeSingle();
+    if (idError) {
+      throw new Error(idError.message);
     }
-    return result;
-  }, {});
-};
-
-const parseEmbeddedXml = (content: string) => {
-  const decoded = decodeXmlEntities(content);
-  if (!decoded.includes("<")) {
-    return null;
-  }
-  const parsed = new DOMParser().parseFromString(decoded, "application/xml");
-  if (!parsed || parsed.getElementsByTagName("parsererror").length > 0) {
-    return null;
-  }
-  return parsed;
-};
-
-const extractHotels = (root: XmlContainer): Record<string, unknown>[] => {
-  const candidates = [
-    "Hotel",
-    "hotel",
-    "HotelInfo",
-    "HotelResult",
-    "HotelItem",
-    "Table",
-  ];
-  for (const tag of candidates) {
-    const nodes = Array.from(root.getElementsByTagName(tag));
-    if (nodes.length) {
-      return nodes.map((node) => elementToObject(node));
+    if (byId) {
+      return byId as CityLookup;
     }
   }
 
-  const container = root instanceof Document ? root.documentElement : root;
-  const directChildren = container ? Array.from(container.children) : [];
-  // Fallback when no known hotel element tag is present in the response.
-  return directChildren.map((node) => elementToObject(node));
-};
+  const { data: byName, error: nameError } = await supabase
+    .from("mygo_cities")
+    .select("mygo_id,name")
+    .ilike("name", cityId)
+    .maybeSingle();
 
-const parseSoapResponse = (
-  xml: string,
-): { error?: string; hotels?: Record<string, unknown>[] } => {
-  const document = new DOMParser().parseFromString(xml, "application/xml");
-  if (!document) {
-    return { error: "Unable to parse SOAP response" };
+  if (nameError) {
+    throw new Error(nameError.message);
   }
 
-  const fault = document.getElementsByTagName("Fault")[0];
-  if (fault) {
-    const faultString = fault.getElementsByTagName("faultstring")[0]?.textContent
-      ?.trim();
-    return { error: faultString || "SOAP fault received" };
-  }
-
-  let root: XmlContainer = document;
-  const searchResult = document.getElementsByTagName("SearchResult")[0];
-  const searchContent = searchResult?.textContent?.trim();
-  if (searchResult && searchContent) {
-    const embedded = parseEmbeddedXml(searchContent);
-    root = embedded ?? searchResult;
-  }
-
-  return { hotels: extractHotels(root) };
+  return byName ? (byName as CityLookup) : null;
 };
 
 serve(async (request) => {
@@ -191,24 +190,27 @@ serve(async (request) => {
     return jsonResponse({ error: "Method not allowed" }, 405, allowedOrigin);
   }
 
-  let payload: {
-    cityId?: string | number;
-    checkIn?: string;
-    checkOut?: string;
-    occupancy?: string | number;
-  };
+  let payload: SearchPayload;
   try {
     payload = await request.json();
   } catch {
     return jsonResponse({ error: "Invalid JSON payload" }, 400, allowedOrigin);
   }
 
-  const cityId = normalizeValue(payload.cityId);
+  const cityInput = normalizeValue(payload.cityId);
   const checkIn = normalizeValue(payload.checkIn);
   const checkOut = normalizeValue(payload.checkOut);
-  const occupancy = normalizeValue(payload.occupancy);
+  const adults = normalizeNumber(payload.adults ?? payload.occupancy);
+  const hotelName = normalizeValue(payload.hotelName);
+  const onlyAvailable = payload.onlyAvailable === true;
 
-  if (!cityId || !checkIn || !checkOut || !occupancy) {
+  const children = Array.isArray(payload.children)
+    ? payload.children.map((child) => normalizeNumber(child)).filter((child) =>
+      child > 0
+    )
+    : [];
+
+  if (!cityInput || !checkIn || !checkOut || adults <= 0) {
     return jsonResponse(
       { error: "Missing required search parameters" },
       400,
@@ -216,17 +218,64 @@ serve(async (request) => {
     );
   }
 
-  const soapEnvelope = buildSoapEnvelope(cityId, checkIn, checkOut, occupancy);
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+    Deno.env.get("SUPABASE_ANON_KEY");
+  const mygoLogin = Deno.env.get("MYGO_LOGIN");
+  const mygoPassword = Deno.env.get("MYGO_PASSWORD");
+
+  if (!supabaseUrl || !supabaseKey || !mygoLogin || !mygoPassword) {
+    return jsonResponse(
+      { error: "Missing required configuration" },
+      500,
+      allowedOrigin,
+    );
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseKey, {
+    auth: { persistSession: false },
+  });
+
+  let city: CityLookup | null = null;
+  try {
+    city = await resolveCity(supabase, cityInput);
+  } catch (error) {
+    return jsonResponse(
+      { error: error instanceof Error ? error.message : "City lookup failed" },
+      502,
+      allowedOrigin,
+    );
+  }
+
+  if (!city) {
+    return jsonResponse(
+      { error: "City not found" },
+      404,
+      allowedOrigin,
+    );
+  }
+
+  const requestXml = buildHotelSearchXml(
+    mygoLogin,
+    mygoPassword,
+    city.mygo_id,
+    checkIn,
+    checkOut,
+    adults,
+    children,
+    hotelName,
+    onlyAvailable,
+  );
 
   let response: Response;
   try {
-    response = await fetch(SOAP_ENDPOINT, {
+    response = await fetch(`${MYGO_ENDPOINT}/HotelSearch`, {
       method: "POST",
       headers: {
-        "Content-Type": "text/xml; charset=utf-8",
-        SOAPAction: `"${SOAP_ACTION}"`,
+        "Content-Type": "application/xml; charset=utf-8",
+        Authorization: buildAuthHeader(mygoLogin, mygoPassword),
       },
-      body: soapEnvelope,
+      body: requestXml,
     });
   } catch {
     return jsonResponse(
@@ -238,29 +287,40 @@ serve(async (request) => {
 
   const responseText = await response.text();
   if (!response.ok) {
-    const parsedError = parseSoapResponse(responseText);
+    const parsedError = parseXmlResponse(
+      responseText,
+      ["HotelSearchResult", "HotelSearchResponse"],
+      ["Hotel", "HotelInfo", "HotelResult", "HotelItem", "Table"],
+    );
     const statusLabel = response.statusText
       ? `${response.status} ${response.statusText}`
       : `${response.status}`;
     return jsonResponse(
-      { error: parsedError.error || `SOAP request failed (${statusLabel})` },
+      {
+        error: parsedError.error || `XML request failed (${statusLabel})`,
+      },
       502,
       allowedOrigin,
     );
   }
 
-  const parsed = parseSoapResponse(responseText);
+  const parsed = parseXmlResponse(
+    responseText,
+    ["HotelSearchResult", "HotelSearchResponse"],
+    ["Hotel", "hotel", "HotelInfo", "HotelResult", "HotelItem", "Table"],
+  );
+
   if (parsed.error) {
     return jsonResponse({ error: parsed.error }, 502, allowedOrigin);
   }
 
-  if (!parsed.hotels) {
+  if (!parsed.items) {
     return jsonResponse(
-      { error: "Invalid SOAP response structure" },
+      { error: "Invalid XML response structure" },
       502,
       allowedOrigin,
     );
   }
 
-  return jsonResponse(parsed.hotels, 200, allowedOrigin);
+  return jsonResponse(parsed.items, 200, allowedOrigin);
 });
