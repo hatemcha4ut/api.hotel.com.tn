@@ -197,9 +197,7 @@ serve(async (request) => {
   const onlyAvailable = payload.onlyAvailable === true;
 
   const children = Array.isArray(payload.children)
-    ? payload.children.map((child) => normalizeNumber(child)).filter((child) =>
-      child >= 0
-    )
+    ? payload.children.map((child) => normalizeNumber(child))
     : [];
 
   if (!cityInput || !checkIn || !checkOut || adults <= 0) {

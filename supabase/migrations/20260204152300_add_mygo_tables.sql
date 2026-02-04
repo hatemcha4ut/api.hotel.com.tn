@@ -48,3 +48,11 @@ for select to anon using (true);
 
 create policy "mygo_hotels_select_authenticated" on public.mygo_hotels
 for select to authenticated using (true);
+
+create policy "suppliers_config_select_admin" on public.suppliers_config
+for select to authenticated
+using (
+  exists (
+    select 1 from public.admin_users au where au.user_id = auth.uid()
+  )
+);
