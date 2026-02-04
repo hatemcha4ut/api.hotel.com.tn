@@ -9,12 +9,12 @@ export const escapeXml = (value: string) =>
     .replaceAll("'", "&apos;");
 
 const decodeXmlEntities = (value: string) => {
-  const decodedWithoutAmpersand = value
+  const intermediate = value
     .replaceAll("&lt;", "<")
     .replaceAll("&gt;", ">")
     .replaceAll("&quot;", '"')
     .replaceAll("&apos;", "'");
-  return decodedWithoutAmpersand.replaceAll("&amp;", "&");
+  return intermediate.replaceAll("&amp;", "&");
 };
 
 const elementToObject = (element: Element): Record<string, unknown> => {

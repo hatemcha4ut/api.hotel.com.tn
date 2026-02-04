@@ -209,8 +209,7 @@ serve(async (request) => {
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
-    Deno.env.get("SUPABASE_ANON_KEY");
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const mygoLogin = Deno.env.get("MYGO_LOGIN");
   const mygoPassword = Deno.env.get("MYGO_PASSWORD");
 
@@ -232,7 +231,7 @@ serve(async (request) => {
   } catch (error) {
     return jsonResponse(
       { error: error instanceof Error ? error.message : "City lookup failed" },
-      502,
+      500,
       allowedOrigin,
     );
   }
