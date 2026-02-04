@@ -51,9 +51,9 @@ const decodeXmlEntities = (value: string) =>
   value
     .replaceAll("&lt;", "<")
     .replaceAll("&gt;", ">")
-    .replaceAll("&amp;", "&")
     .replaceAll("&quot;", '"')
-    .replaceAll("&apos;", "'");
+    .replaceAll("&apos;", "'")
+    .replaceAll("&amp;", "&");
 
 const buildSoapEnvelope = (
   cityId: string,
@@ -129,7 +129,9 @@ const extractHotels = (root: XmlNode): Record<string, unknown>[] => {
   return directChildren.map((node) => elementToObject(node));
 };
 
-const parseSoapResponse = (xml: string) => {
+const parseSoapResponse = (
+  xml: string,
+): { error?: string; hotels?: Record<string, unknown>[] } => {
   const document = new DOMParser().parseFromString(xml, "application/xml");
   if (!document) {
     return { error: "Unable to parse SOAP response" };
@@ -221,19 +223,27 @@ serve(async (request) => {
   }
 
   const responseText = await response.text();
-  const parsed = parseSoapResponse(responseText);
-
   if (!response.ok) {
+    const parsedError = parseSoapResponse(responseText);
     return jsonResponse(
-      { error: parsed.error || `SOAP request failed (${response.status})` },
+      { error: parsedError.error || `SOAP request failed (${response.status})` },
       502,
       allowedOrigin,
     );
   }
 
+  const parsed = parseSoapResponse(responseText);
   if (parsed.error) {
     return jsonResponse({ error: parsed.error }, 502, allowedOrigin);
   }
 
-  return jsonResponse(parsed.hotels ?? [], 200, allowedOrigin);
+  if (!parsed.hotels) {
+    return jsonResponse(
+      { error: "Invalid SOAP response structure" },
+      502,
+      allowedOrigin,
+    );
+  }
+
+  return jsonResponse(parsed.hotels, 200, allowedOrigin);
 });
