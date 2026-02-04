@@ -14,11 +14,11 @@ const timingSafeEqual = (left: string, right: string) => {
   if (left.length !== right.length) {
     return false;
   }
-  let result = 0;
-  for (let index = 0; index < left.length; index += 1) {
-    result |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  let mismatchBits = 0;
+  for (let i = 0; i < left.length; i += 1) {
+    mismatchBits |= left.charCodeAt(i) ^ right.charCodeAt(i);
   }
-  return result === 0;
+  return mismatchBits === 0;
 };
 
 const signPayload = async (payload: string, secret: string) => {
@@ -101,15 +101,16 @@ serve(async (request) => {
     .update({ status: paymentStatus })
     .eq("reference", reference)
     .select("booking_id")
-    .maybeSingle();
+    .single();
 
   if (paymentError) {
-    return jsonResponse({ error: paymentError.message }, 500);
+    const notFound = paymentError.code === "PGRST116";
+    return jsonResponse({ error: paymentError.message }, notFound ? 404 : 500);
   }
 
   const bookingId = paymentData?.booking_id;
   if (!bookingId) {
-    return jsonResponse({ error: "Payment not found" }, 404);
+    return jsonResponse({ error: "Missing booking_id for payment" }, 404);
   }
 
   const { error: bookingError } = await supabase
