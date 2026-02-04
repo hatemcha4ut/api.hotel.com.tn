@@ -46,7 +46,13 @@ serve(async (request) => {
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const clictopaySecret = Deno.env.get("CLICTOPAY_SECRET");
   if (!supabaseUrl || !supabaseKey || !clictopaySecret) {
-    return jsonResponse({ error: "Configuration missing" }, 500);
+    return jsonResponse(
+      {
+        error:
+          "Missing required environment variables: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, CLICTOPAY_SECRET",
+      },
+      500,
+    );
   }
 
   let payload: {
@@ -98,7 +104,7 @@ serve(async (request) => {
     .maybeSingle();
 
   if (paymentError) {
-    return jsonResponse({ error: paymentError.message }, 400);
+    return jsonResponse({ error: paymentError.message }, 500);
   }
 
   const bookingId = paymentData?.booking_id;
@@ -112,7 +118,7 @@ serve(async (request) => {
     .eq("id", bookingId);
 
   if (bookingError) {
-    return jsonResponse({ error: bookingError.message }, 400);
+    return jsonResponse({ error: bookingError.message }, 500);
   }
 
   return jsonResponse({ success: true }, 200);
