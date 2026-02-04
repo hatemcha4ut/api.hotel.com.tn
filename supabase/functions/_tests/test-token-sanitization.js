@@ -107,8 +107,7 @@ sanitized.forEach((hotel, index) => {
 
 if (passed) {
   console.log("✅ All tests passed! Token sanitization is working correctly.");
-  process.exit(0);
 } else {
   console.log("❌ Some tests failed! Token sanitization has issues.");
-  process.exit(1);
+  throw new Error("Token sanitization tests failed");
 }

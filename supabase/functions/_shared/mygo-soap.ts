@@ -33,7 +33,7 @@ export interface HotelSearchResult {
 }
 
 // Build SOAP envelope for HotelSearch operation
-const buildSearchEnvelope = (params: HotelSearchParams) =>
+export const buildSearchEnvelope = (params: HotelSearchParams) =>
   `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
@@ -47,20 +47,25 @@ const buildSearchEnvelope = (params: HotelSearchParams) =>
 </soap:Envelope>`;
 
 // Build SOAP envelope for BookingCreation operation
+// Note: bookingData is passed as a JSON string, properly escaped for XML
 export const buildBookingEnvelope = (
   token: string,
   bookingData: Record<string, unknown>,
-) =>
-  `<?xml version="1.0" encoding="utf-8"?>
+) => {
+  // Convert booking data to JSON string first, then escape for XML
+  const bookingJson = JSON.stringify(bookingData);
+  
+  return `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
     <BookingCreation xmlns="http://tempuri.org/">
       <token>${escapeXml(token)}</token>
       <PreBooking>true</PreBooking>
-      <bookingData>${escapeXml(JSON.stringify(bookingData))}</bookingData>
+      <bookingData>${escapeXml(bookingJson)}</bookingData>
     </BookingCreation>
   </soap:Body>
 </soap:Envelope>`;
+};
 
 type XmlContainer = Document | Element;
 

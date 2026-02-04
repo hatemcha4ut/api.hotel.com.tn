@@ -242,7 +242,7 @@ serve(async (request) => {
   };
 
   const { data: bookingData, error: bookingError } = await supabase
-    .from("booking")
+    .from("bookings")
     .insert(bookingWithMyGoData)
     .select()
     .single();
