@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { verify } from "https://deno.land/x/djwt@v2.8/mod.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import {
+  createBooking,
+  type MyGoCredential,
+  type MyGoBookingParams,
+} from "../_shared/lib/mygoClient.ts";
 
 const allowedOrigins = new Set([
   "https://www.hotel.com.tn",
@@ -14,6 +19,28 @@ const corsHeaders = (origin: string) => ({
     "authorization, x-client-info, apikey, content-type",
   "Vary": "Origin",
 });
+
+const jsonResponse = (
+  body: Record<string, unknown>,
+  status: number,
+  origin?: string,
+) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      ...(origin ? corsHeaders(origin) : {}),
+    },
+  });
+
+// Hash token for secure storage (never store plain token)
+const hashToken = async (token: string): Promise<string> => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(token);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+};
 
 const parseJwtHeader = (token: string) => {
   const [header] = token.split(".");
@@ -32,18 +59,16 @@ const verifyJwtClaims = async (
   algorithm: "HS256",
 ) => (await verify(token, secret, algorithm)) as Record<string, unknown>;
 
-const jsonResponse = (
-  body: Record<string, unknown>,
-  status: number,
-  origin?: string,
-) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      ...(origin ? corsHeaders(origin) : {}),
-    },
-  });
+const getMyGoCredential = (): MyGoCredential => {
+  const login = Deno.env.get("MYGO_LOGIN");
+  const password = Deno.env.get("MYGO_PASSWORD");
+
+  if (!login || !password) {
+    throw new Error("MYGO_LOGIN and MYGO_PASSWORD must be configured");
+  }
+
+  return { login, password };
+};
 
 serve(async (request) => {
   const origin = request.headers.get("Origin") ?? "";
@@ -100,6 +125,7 @@ serve(async (request) => {
       allowedOrigin,
     );
   }
+
   const algorithm = "HS256";
   let claims: Record<string, unknown>;
   try {
@@ -112,88 +138,163 @@ serve(async (request) => {
     );
   }
 
+  // Parse request body
   let payload: {
-    booking?: Record<string, unknown>;
-    booking_rooms?: Record<string, unknown>[];
+    token?: string;
+    preBooking?: boolean;
+    customerName?: string;
+    customerEmail?: string;
+    customerPhone?: string;
+    roomSelections?: Array<{
+      hotelId: number;
+      roomId: number;
+    }>;
   };
+
   try {
     payload = await request.json();
   } catch {
     return jsonResponse({ error: "Invalid JSON payload" }, 400, allowedOrigin);
   }
 
+  // Validate required fields
+  if (!payload.token || typeof payload.token !== "string") {
+    return jsonResponse(
+      { error: "token is required (from search-hotels)" },
+      400,
+      allowedOrigin,
+    );
+  }
+
+  if (!payload.customerName || typeof payload.customerName !== "string") {
+    return jsonResponse(
+      { error: "customerName is required" },
+      400,
+      allowedOrigin,
+    );
+  }
+
+  if (!payload.customerEmail || typeof payload.customerEmail !== "string") {
+    return jsonResponse(
+      { error: "customerEmail is required" },
+      400,
+      allowedOrigin,
+    );
+  }
+
+  if (!payload.customerPhone || typeof payload.customerPhone !== "string") {
+    return jsonResponse(
+      { error: "customerPhone is required" },
+      400,
+      allowedOrigin,
+    );
+  }
+
   if (
-    !payload.booking ||
-    typeof payload.booking !== "object" ||
-    Array.isArray(payload.booking) ||
-    !Array.isArray(payload.booking_rooms) ||
-    payload.booking_rooms.some(
-      (room) => !room || typeof room !== "object" || Array.isArray(room),
-    )
+    !Array.isArray(payload.roomSelections) ||
+    payload.roomSelections.length === 0
   ) {
-    return jsonResponse({ error: "Invalid booking payload" }, 400, allowedOrigin);
+    return jsonResponse(
+      { error: "roomSelections array is required (at least 1 room)" },
+      400,
+      allowedOrigin,
+    );
+  }
+
+  // Validate room selections
+  for (const selection of payload.roomSelections) {
+    if (
+      !selection ||
+      typeof selection.hotelId !== "number" ||
+      typeof selection.roomId !== "number"
+    ) {
+      return jsonResponse(
+        { error: "Each roomSelection must have hotelId and roomId (numbers)" },
+        400,
+        allowedOrigin,
+      );
+    }
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey, {
     global: { headers: { Authorization: authHeader } },
   });
 
-  const claimAnonymous = claims.is_anonymous;
-  const isAnonymous = claimAnonymous === true;
-  const bookingMode = isAnonymous ? "SANS_COMPTE" : "AVEC_COMPTE";
+  // Default to preBooking=true (recommended)
+  const preBooking = payload.preBooking ?? true;
 
-  const bookingPayload = Object.fromEntries(
-    Object.entries(payload.booking).filter(
-      ([key]) => key !== "booking_mode" && key !== "id",
-    ),
-  );
+  const bookingParams: MyGoBookingParams = {
+    token: payload.token,
+    preBooking,
+    customerName: payload.customerName,
+    customerEmail: payload.customerEmail,
+    customerPhone: payload.customerPhone,
+    roomSelections: payload.roomSelections,
+  };
 
-  const { data: bookingData, error: bookingError } = await supabase
-    .from("booking")
-    .insert({ ...bookingPayload, booking_mode: bookingMode })
-    .select()
-    .single();
+  try {
+    // Call MyGo BookingCreation API
+    const credential = getMyGoCredential();
+    const myGoResponse = await createBooking(credential, bookingParams);
 
-  if (bookingError) {
-    return jsonResponse({ error: bookingError.message }, 400, allowedOrigin);
-  }
+    // Hash token for storage (never store plain token)
+    const tokenHash = await hashToken(payload.token);
 
-  const bookingId = (bookingData as { id?: string | number })?.id;
-  if (
-    bookingId === null ||
-    bookingId === undefined ||
-    (typeof bookingId !== "string" && typeof bookingId !== "number")
-  ) {
+    // Store booking record in mygo_bookings table
+    const { data: bookingRecord, error: dbError } = await supabase
+      .from("mygo_bookings")
+      .insert({
+        prebooking: preBooking,
+        token_hash: tokenHash,
+        booking_id: myGoResponse.bookingId ?? null,
+        state: myGoResponse.state ?? null,
+        total_price: myGoResponse.totalPrice ?? null,
+        request_json: {
+          customerName: payload.customerName,
+          customerEmail: payload.customerEmail,
+          customerPhone: payload.customerPhone,
+          roomSelections: payload.roomSelections,
+          preBooking,
+        },
+        response_json: myGoResponse,
+      })
+      .select()
+      .single();
+
+    if (dbError) {
+      console.error("CRITICAL: Failed to store booking record. Error:", {
+        message: dbError.message,
+        code: dbError.code,
+        details: dbError.details,
+        myGoBookingId: myGoResponse.bookingId,
+      });
+      // Return 500 since we cannot track the booking
+      return jsonResponse(
+        {
+          error: "Booking created in MyGo but failed to store record. Contact support with booking ID.",
+          myGoBookingId: myGoResponse.bookingId,
+        },
+        500,
+        allowedOrigin,
+      );
+    }
+
     return jsonResponse(
-      { error: "Booking ID missing" },
-      500,
+      {
+        ...myGoResponse,
+        recordId: bookingRecord.id,
+      },
+      200,
+      allowedOrigin,
+    );
+  } catch (error) {
+    console.error("Booking error:", error);
+    return jsonResponse(
+      {
+        error: error instanceof Error ? error.message : "Booking creation failed",
+      },
+      502,
       allowedOrigin,
     );
   }
-  const bookingRooms = payload.booking_rooms.map((room) => {
-    const roomPayload = Object.fromEntries(
-      Object.entries(room).filter(
-        ([key]) => key !== "booking_id" && key !== "id",
-      ),
-    );
-    return { ...roomPayload, booking_id: bookingId };
-  });
-
-  const bookingRoomsResult = bookingRooms.length
-    ? await supabase.from("booking_rooms").insert(bookingRooms).select()
-    : { data: [], error: null };
-
-  if (bookingRoomsResult.error) {
-    return jsonResponse(
-      { error: bookingRoomsResult.error.message },
-      400,
-      allowedOrigin,
-    );
-  }
-
-  return jsonResponse(
-    { booking: bookingData, booking_rooms: bookingRoomsResult.data },
-    200,
-    allowedOrigin,
-  );
 });

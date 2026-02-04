@@ -1,15 +1,25 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import {
+  searchHotels,
+  filterBookableHotels,
+  type MyGoCredential,
+  type MyGoSearchParams,
+} from "../_shared/lib/mygoClient.ts";
 
-// MyGo SOAP endpoint uses HTTP; no HTTPS endpoint is available for this API.
-// The API also provides no request-level auth or signing for the search action.
-// Only non-sensitive search parameters are sent to this endpoint.
-// Apply rate limiting upstream to reduce exposure over HTTP.
-const SOAP_ENDPOINT = "http://api.mygo.tn/HotelService.asmx";
-const SOAP_ACTION = "http://tempuri.org/Search";
+// Validation constants
+const MAX_ROOMS = 10;
+const MAX_ADULTS_PER_ROOM = 10;
+const MAX_CHILDREN_PER_ROOM = 10;
+const MAX_CHILD_AGE = 17;
+const CACHE_TTL_SECONDS = 120;
+const RATE_LIMIT_WINDOW_MINUTES = 60;
+const RATE_LIMIT_MAX_REQUESTS = 60;
 
+// CORS configuration - only allow specific origins
 const allowedOrigins = new Set([
   "https://www.hotel.com.tn",
-  "https://admin.hotel.com.tn",
+  "http://localhost:5173",
 ]);
 
 const corsHeaders = (origin: string) =>
@@ -36,140 +46,224 @@ const jsonResponse = (
     },
   });
 
-const normalizeValue = (value: unknown) => {
-  if (value === null || value === undefined || typeof value === "boolean") {
-    return "";
-  }
-  if (typeof value === "string") {
-    return value.trim();
-  }
-  if (typeof value === "number") {
-    return value.toString();
-  }
-  return "";
+// Hash IP for rate limiting key
+const hashString = async (input: string): Promise<string> => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(input);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 };
 
-const escapeXml = (value: string) =>
-  value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
+// Get client IP from request
+const getClientIp = (request: Request): string => {
+  // Try various headers that might contain the real IP
+  const xForwardedFor = request.headers.get("x-forwarded-for");
+  if (xForwardedFor) {
+    return xForwardedFor.split(",")[0].trim();
+  }
 
-const decodeXmlEntities = (value: string) => {
-  const decodedWithoutAmpersand = value
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&apos;", "'");
-  // Decode ampersand last to avoid double-decoding.
-  return decodedWithoutAmpersand.replaceAll("&amp;", "&");
+  const xRealIp = request.headers.get("x-real-ip");
+  if (xRealIp) {
+    return xRealIp;
+  }
+
+  // Fallback to a generic identifier
+  return "unknown";
 };
 
-const buildSoapEnvelope = (
-  cityId: string,
-  checkIn: string,
-  checkOut: string,
-  occupancy: string,
-) =>
-  `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <Search xmlns="http://tempuri.org/">
-      <cityId>${escapeXml(cityId)}</cityId>
-      <checkIn>${escapeXml(checkIn)}</checkIn>
-      <checkOut>${escapeXml(checkOut)}</checkOut>
-      <occupancy>${escapeXml(occupancy)}</occupancy>
-    </Search>
-  </soap:Body>
-</soap:Envelope>`;
+// Rate limiting check
+const checkRateLimit = async (
+  supabase: ReturnType<typeof createClient>,
+  clientIp: string,
+  windowMinutes: number,
+  maxRequests: number,
+): Promise<{ allowed: boolean; remaining: number }> => {
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - windowMinutes * 60 * 1000);
 
-type XmlContainer = Document | Element;
+  const keyHash = await hashString(clientIp);
+  const key = `${keyHash}:${windowMinutes}m`;
 
-const elementToObject = (element: Element): Record<string, unknown> => {
-  const children = Array.from(element.children);
-  if (!children.length) {
-    return { value: element.textContent?.trim() ?? "" };
+  // Clean up expired entries
+  await supabase
+    .from("rate_limits")
+    .delete()
+    .lt("window_start", windowStart.toISOString());
+
+  // Get current count for this key
+  const { data: existing } = await supabase
+    .from("rate_limits")
+    .select("count, window_start")
+    .eq("key", key)
+    .gte("window_start", windowStart.toISOString())
+    .maybeSingle();
+
+  if (!existing) {
+    // First request in this window
+    await supabase.from("rate_limits").upsert({
+      key,
+      window_start: now.toISOString(),
+      count: 1,
+    });
+    return { allowed: true, remaining: maxRequests - 1 };
   }
-  return children.reduce<Record<string, unknown>>((result, child) => {
-    const key = child.tagName;
-    const value =
-      child.children.length > 0
-        ? elementToObject(child)
-        : child.textContent?.trim() ?? "";
-    if (key in result) {
-      const existing = result[key];
-      if (Array.isArray(existing)) {
-        existing.push(value);
-      } else {
-        result[key] = [existing, value];
+
+  if (existing.count >= maxRequests) {
+    return { allowed: false, remaining: 0 };
+  }
+
+  // Increment count
+  await supabase
+    .from("rate_limits")
+    .update({ count: existing.count + 1 })
+    .eq("key", key);
+
+  return { allowed: true, remaining: maxRequests - existing.count - 1 };
+};
+
+// Cache helpers
+const getCacheKey = (params: MyGoSearchParams): string => {
+  return JSON.stringify({
+    cityId: params.cityId,
+    checkIn: params.checkIn,
+    checkOut: params.checkOut,
+    rooms: params.rooms,
+    currency: params.currency,
+  });
+};
+
+const getFromCache = async (
+  supabase: ReturnType<typeof createClient>,
+  cacheKey: string,
+): Promise<unknown | null> => {
+  const now = new Date();
+
+  // Clean expired entries
+  await supabase
+    .from("search_cache")
+    .delete()
+    .lt("expires_at", now.toISOString());
+
+  const { data } = await supabase
+    .from("search_cache")
+    .select("response_json")
+    .eq("key", cacheKey)
+    .gt("expires_at", now.toISOString())
+    .maybeSingle();
+
+  return data?.response_json ?? null;
+};
+
+const setCache = async (
+  supabase: ReturnType<typeof createClient>,
+  cacheKey: string,
+  value: unknown,
+  ttlSeconds: number,
+): Promise<void> => {
+  const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
+
+  await supabase.from("search_cache").upsert({
+    key: cacheKey,
+    expires_at: expiresAt.toISOString(),
+    response_json: value,
+  });
+};
+
+// Validate search parameters
+const validateSearchParams = (params: {
+  checkIn?: string;
+  checkOut?: string;
+  cityId?: number;
+  rooms?: unknown[];
+}): string | null => {
+  if (!params.checkIn || typeof params.checkIn !== "string") {
+    return "checkIn is required (YYYY-MM-DD format)";
+  }
+
+  if (!params.checkOut || typeof params.checkOut !== "string") {
+    return "checkOut is required (YYYY-MM-DD format)";
+  }
+
+  if (!params.cityId || typeof params.cityId !== "number") {
+    return "cityId is required (number)";
+  }
+
+  if (!Array.isArray(params.rooms) || params.rooms.length === 0) {
+    return "rooms array is required (at least 1 room)";
+  }
+
+  if (params.rooms.length > MAX_ROOMS) {
+    return `Maximum ${MAX_ROOMS} rooms allowed`;
+  }
+
+  // Validate date format
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(params.checkIn)) {
+    return "checkIn must be in YYYY-MM-DD format";
+  }
+
+  if (!dateRegex.test(params.checkOut)) {
+    return "checkOut must be in YYYY-MM-DD format";
+  }
+
+  // Validate dates are valid
+  const checkInDate = new Date(params.checkIn);
+  const checkOutDate = new Date(params.checkOut);
+
+  if (isNaN(checkInDate.getTime())) {
+    return "checkIn is not a valid date";
+  }
+
+  if (isNaN(checkOutDate.getTime())) {
+    return "checkOut is not a valid date";
+  }
+
+  if (checkOutDate <= checkInDate) {
+    return "checkOut must be after checkIn";
+  }
+
+  // Validate rooms
+  for (const room of params.rooms) {
+    if (!room || typeof room !== "object") {
+      return "Each room must be an object";
+    }
+
+    const r = room as { adults?: number; childrenAges?: unknown };
+
+    if (!r.adults || typeof r.adults !== "number" || r.adults < 1 || r.adults > MAX_ADULTS_PER_ROOM) {
+      return `Each room must have adults (1-${MAX_ADULTS_PER_ROOM})`;
+    }
+
+    if (r.childrenAges) {
+      if (!Array.isArray(r.childrenAges)) {
+        return "childrenAges must be an array";
       }
-    } else {
-      result[key] = value;
-    }
-    return result;
-  }, {});
-};
 
-const parseEmbeddedXml = (content: string) => {
-  const decoded = decodeXmlEntities(content);
-  if (!decoded.includes("<")) {
-    return null;
-  }
-  const parsed = new DOMParser().parseFromString(decoded, "application/xml");
-  if (!parsed || parsed.getElementsByTagName("parsererror").length > 0) {
-    return null;
-  }
-  return parsed;
-};
+      if (r.childrenAges.length > MAX_CHILDREN_PER_ROOM) {
+        return `Maximum ${MAX_CHILDREN_PER_ROOM} children per room`;
+      }
 
-const extractHotels = (root: XmlContainer): Record<string, unknown>[] => {
-  const candidates = [
-    "Hotel",
-    "hotel",
-    "HotelInfo",
-    "HotelResult",
-    "HotelItem",
-    "Table",
-  ];
-  for (const tag of candidates) {
-    const nodes = Array.from(root.getElementsByTagName(tag));
-    if (nodes.length) {
-      return nodes.map((node) => elementToObject(node));
+      for (const age of r.childrenAges) {
+        if (typeof age !== "number" || age < 0 || age > MAX_CHILD_AGE) {
+          return `Child ages must be numbers between 0 and ${MAX_CHILD_AGE}`;
+        }
+      }
     }
   }
 
-  const container = root instanceof Document ? root.documentElement : root;
-  const directChildren = container ? Array.from(container.children) : [];
-  // Fallback when no known hotel element tag is present in the response.
-  return directChildren.map((node) => elementToObject(node));
+  return null;
 };
 
-const parseSoapResponse = (
-  xml: string,
-): { error?: string; hotels?: Record<string, unknown>[] } => {
-  const document = new DOMParser().parseFromString(xml, "application/xml");
-  if (!document) {
-    return { error: "Unable to parse SOAP response" };
+const getMyGoCredential = (): MyGoCredential => {
+  const login = Deno.env.get("MYGO_LOGIN");
+  const password = Deno.env.get("MYGO_PASSWORD");
+
+  if (!login || !password) {
+    throw new Error("MYGO_LOGIN and MYGO_PASSWORD must be configured");
   }
 
-  const fault = document.getElementsByTagName("Fault")[0];
-  if (fault) {
-    const faultString = fault.getElementsByTagName("faultstring")[0]?.textContent
-      ?.trim();
-    return { error: faultString || "SOAP fault received" };
-  }
-
-  let root: XmlContainer = document;
-  const searchResult = document.getElementsByTagName("SearchResult")[0];
-  const searchContent = searchResult?.textContent?.trim();
-  if (searchResult && searchContent) {
-    const embedded = parseEmbeddedXml(searchContent);
-    root = embedded ?? searchResult;
-  }
-
-  return { hotels: extractHotels(root) };
+  return { login, password };
 };
 
 serve(async (request) => {
@@ -191,76 +285,103 @@ serve(async (request) => {
     return jsonResponse({ error: "Method not allowed" }, 405, allowedOrigin);
   }
 
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return jsonResponse(
+      { error: "Supabase configuration missing" },
+      500,
+      allowedOrigin,
+    );
+  }
+
+  // Create Supabase client
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  // Rate limiting
+  const clientIp = getClientIp(request);
+  let rateLimitResult;
+  try {
+    rateLimitResult = await checkRateLimit(supabase, clientIp, RATE_LIMIT_WINDOW_MINUTES, RATE_LIMIT_MAX_REQUESTS);
+  } catch (error) {
+    console.error("Rate limit check failed:", error);
+    // Allow request but log the error - don't block on rate limit DB issues
+    rateLimitResult = { allowed: true, remaining: -1 };
+  }
+
+  if (!rateLimitResult.allowed) {
+    return jsonResponse(
+      { error: "Rate limit exceeded. Please try again later." },
+      429,
+      allowedOrigin,
+    );
+  }
+
+  // Parse request body
   let payload: {
-    cityId?: string | number;
     checkIn?: string;
     checkOut?: string;
-    occupancy?: string | number;
+    cityId?: number;
+    currency?: "TND" | "EUR" | "USD";
+    onlyAvailable?: boolean;
+    rooms?: Array<{ adults: number; childrenAges?: number[] }>;
   };
+
   try {
     payload = await request.json();
   } catch {
     return jsonResponse({ error: "Invalid JSON payload" }, 400, allowedOrigin);
   }
 
-  const cityId = normalizeValue(payload.cityId);
-  const checkIn = normalizeValue(payload.checkIn);
-  const checkOut = normalizeValue(payload.checkOut);
-  const occupancy = normalizeValue(payload.occupancy);
-
-  if (!cityId || !checkIn || !checkOut || !occupancy) {
-    return jsonResponse(
-      { error: "Missing required search parameters" },
-      400,
-      allowedOrigin,
-    );
+  // Validate parameters
+  const validationError = validateSearchParams(payload);
+  if (validationError) {
+    return jsonResponse({ error: validationError }, 400, allowedOrigin);
   }
 
-  const soapEnvelope = buildSoapEnvelope(cityId, checkIn, checkOut, occupancy);
+  const searchParams: MyGoSearchParams = {
+    cityId: payload.cityId!,
+    checkIn: payload.checkIn!,
+    checkOut: payload.checkOut!,
+    rooms: payload.rooms!,
+    currency: payload.currency,
+    onlyAvailable: payload.onlyAvailable ?? true,
+  };
 
-  let response: Response;
+  // Check cache
+  const cacheKey = getCacheKey(searchParams);
+  const cached = await getFromCache(supabase, cacheKey);
+
+  if (cached) {
+    return jsonResponse(cached as Record<string, unknown>, 200, allowedOrigin);
+  }
+
+  // Call MyGo API
   try {
-    response = await fetch(SOAP_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/xml; charset=utf-8",
-        SOAPAction: `"${SOAP_ACTION}"`,
+    const credential = getMyGoCredential();
+    const searchResult = await searchHotels(credential, searchParams);
+
+    // Filter out non-bookable hotels (Available=false or OnRequest=true rooms)
+    const bookableHotels = filterBookableHotels(searchResult.hotels);
+
+    const response = {
+      token: searchResult.token,
+      hotels: bookableHotels,
+    };
+
+    // Cache the response
+    await setCache(supabase, cacheKey, response, CACHE_TTL_SECONDS);
+
+    return jsonResponse(response, 200, allowedOrigin);
+  } catch (error) {
+    console.error("Search error:", error);
+    return jsonResponse(
+      {
+        error: error instanceof Error ? error.message : "Search failed",
       },
-      body: soapEnvelope,
-    });
-  } catch {
-    return jsonResponse(
-      { error: "Failed to connect to hotel search service" },
       502,
       allowedOrigin,
     );
   }
-
-  const responseText = await response.text();
-  if (!response.ok) {
-    const parsedError = parseSoapResponse(responseText);
-    const statusLabel = response.statusText
-      ? `${response.status} ${response.statusText}`
-      : `${response.status}`;
-    return jsonResponse(
-      { error: parsedError.error || `SOAP request failed (${statusLabel})` },
-      502,
-      allowedOrigin,
-    );
-  }
-
-  const parsed = parseSoapResponse(responseText);
-  if (parsed.error) {
-    return jsonResponse({ error: parsed.error }, 502, allowedOrigin);
-  }
-
-  if (!parsed.hotels) {
-    return jsonResponse(
-      { error: "Invalid SOAP response structure" },
-      502,
-      allowedOrigin,
-    );
-  }
-
-  return jsonResponse(parsed.hotels, 200, allowedOrigin);
 });
