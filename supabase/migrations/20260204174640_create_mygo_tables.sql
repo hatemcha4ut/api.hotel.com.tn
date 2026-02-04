@@ -129,5 +129,5 @@ CREATE POLICY "mygo_bookings_select_admin"
 COMMENT ON TABLE public.mygo_cities IS 'Static data from MyGo ListCity API - synced via mygo-sync function';
 COMMENT ON TABLE public.mygo_hotels IS 'Static data from MyGo ListHotel API - synced via mygo-sync function';
 COMMENT ON TABLE public.rate_limits IS 'Rate limiting for public search-hotels endpoint - key format: hash(ip):window';
-COMMENT ON TABLE public.search_cache IS 'Short-lived cache (60-180s TTL) for search-hotels responses';
+COMMENT ON TABLE public.search_cache IS 'Short-lived cache (120s TTL) for search-hotels responses';
 COMMENT ON TABLE public.mygo_bookings IS 'MyGo BookingCreation records - token_hash stored (never plain token), prebooking flag tracks PreBooking=true calls';

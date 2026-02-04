@@ -13,6 +13,8 @@
 const MYGO_BASE_URL = "https://admin.mygo.co/api/hotel";
 const REQUEST_TIMEOUT_MS = 30000; // 30 seconds
 const MAX_RETRIES = 2; // Only for idempotent calls (ListCity, HotelSearch)
+const RETRY_BASE_MS = 1000; // Base delay for exponential backoff
+const RETRY_MAX_MS = 5000; // Maximum retry delay
 
 // XML escaping
 const escapeXml = (value: string): string =>
@@ -410,7 +412,7 @@ export const postXml = async (
       
       // If this isn't the last attempt, wait before retrying
       if (attempt < maxRetries) {
-        const backoffMs = Math.min(1000 * Math.pow(2, attempt), 5000);
+        const backoffMs = Math.min(RETRY_BASE_MS * Math.pow(2, attempt), RETRY_MAX_MS);
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
       }
     }

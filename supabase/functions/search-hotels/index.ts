@@ -7,19 +7,31 @@ import {
   type MyGoSearchParams,
 } from "../_shared/lib/mygoClient.ts";
 
+// Validation constants
+const MAX_ROOMS = 10;
+const MAX_ADULTS_PER_ROOM = 10;
+const MAX_CHILDREN_PER_ROOM = 10;
+const MAX_CHILD_AGE = 17;
+const CACHE_TTL_SECONDS = 120;
+const RATE_LIMIT_WINDOW_MINUTES = 60;
+const RATE_LIMIT_MAX_REQUESTS = 60;
+
 // CORS configuration - only allow specific origins
 const allowedOrigins = new Set([
   "https://www.hotel.com.tn",
   "http://localhost:5173",
 ]);
 
-const corsHeaders = (origin: string) => ({
-  "Access-Control-Allow-Origin": origin,
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-  "Vary": "Origin",
-});
+const corsHeaders = (origin: string) =>
+  allowedOrigins.has(origin)
+    ? {
+      "Access-Control-Allow-Origin": origin,
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers":
+        "authorization, x-client-info, apikey, content-type",
+      "Vary": "Origin",
+    }
+    : {};
 
 const jsonResponse = (
   body: Record<string, unknown> | unknown[],
@@ -181,8 +193,8 @@ const validateSearchParams = (params: {
     return "rooms array is required (at least 1 room)";
   }
 
-  if (params.rooms.length > 10) {
-    return "Maximum 10 rooms allowed";
+  if (params.rooms.length > MAX_ROOMS) {
+    return `Maximum ${MAX_ROOMS} rooms allowed`;
   }
 
   // Validate date format
@@ -219,8 +231,8 @@ const validateSearchParams = (params: {
 
     const r = room as { adults?: number; childrenAges?: unknown };
 
-    if (!r.adults || typeof r.adults !== "number" || r.adults < 1 || r.adults > 10) {
-      return "Each room must have adults (1-10)";
+    if (!r.adults || typeof r.adults !== "number" || r.adults < 1 || r.adults > MAX_ADULTS_PER_ROOM) {
+      return `Each room must have adults (1-${MAX_ADULTS_PER_ROOM})`;
     }
 
     if (r.childrenAges) {
@@ -228,13 +240,13 @@ const validateSearchParams = (params: {
         return "childrenAges must be an array";
       }
 
-      if (r.childrenAges.length > 10) {
-        return "Maximum 10 children per room";
+      if (r.childrenAges.length > MAX_CHILDREN_PER_ROOM) {
+        return `Maximum ${MAX_CHILDREN_PER_ROOM} children per room`;
       }
 
       for (const age of r.childrenAges) {
-        if (typeof age !== "number" || age < 0 || age > 17) {
-          return "Child ages must be numbers between 0 and 17";
+        if (typeof age !== "number" || age < 0 || age > MAX_CHILD_AGE) {
+          return `Child ages must be numbers between 0 and ${MAX_CHILD_AGE}`;
         }
       }
     }
@@ -287,9 +299,9 @@ serve(async (request) => {
   // Create Supabase client
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  // Rate limiting (60 requests per hour per IP)
+  // Rate limiting
   const clientIp = getClientIp(request);
-  const rateLimitResult = await checkRateLimit(supabase, clientIp, 60, 60);
+  const rateLimitResult = await checkRateLimit(supabase, clientIp, RATE_LIMIT_WINDOW_MINUTES, RATE_LIMIT_MAX_REQUESTS);
 
   if (!rateLimitResult.allowed) {
     return jsonResponse(
@@ -351,8 +363,8 @@ serve(async (request) => {
       hotels: bookableHotels,
     };
 
-    // Cache the response for 120 seconds
-    await setCache(supabase, cacheKey, response, 120);
+    // Cache the response
+    await setCache(supabase, cacheKey, response, CACHE_TTL_SECONDS);
 
     return jsonResponse(response, 200, allowedOrigin);
   } catch (error) {

@@ -30,7 +30,7 @@ const syncCities = async (supabase: ReturnType<typeof createClient>) => {
   const cities = await listCities(credential);
 
   if (!cities || cities.length === 0) {
-    return { inserted: 0, updated: 0 };
+    return { processed: 0 };
   }
 
   // Upsert cities into database
@@ -50,8 +50,7 @@ const syncCities = async (supabase: ReturnType<typeof createClient>) => {
   }
 
   return {
-    inserted: cities.length,
-    updated: cities.length,
+    processed: cities.length,
   };
 };
 
