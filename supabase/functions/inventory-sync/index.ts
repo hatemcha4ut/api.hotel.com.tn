@@ -89,6 +89,23 @@ const syncHotels = async (
   };
 };
 
+// Helper to sanitize XML body by redacting password field
+const createSanitizedXmlSnippet = (fullXmlBody: string, maxChars: number) => {
+  const snippet = fullXmlBody.substring(0, maxChars);
+  
+  // Find password tags and replace content with asterisks
+  const passwordTagStart = snippet.indexOf("<Password>");
+  if (passwordTagStart === -1) return snippet;
+  
+  const passwordTagEnd = snippet.indexOf("</Password>", passwordTagStart);
+  if (passwordTagEnd === -1) return snippet;
+  
+  const beforePassword = snippet.substring(0, passwordTagStart + 10); // +10 for "<Password>"
+  const afterPassword = snippet.substring(passwordTagEnd);
+  
+  return beforePassword + "***" + afterPassword;
+};
+
 const diagnoseMygo = async () => {
   // Read credentials from environment
   const login = (Deno.env.get("MYGO_LOGIN") ?? "").trim();
@@ -100,13 +117,20 @@ const diagnoseMygo = async () => {
   // Build ListCity XML request
   const xml = buildListCityXml({ login, password });
 
+  // Prepare request metadata for diagnostic output
+  const apiUrl = "https://admin.mygo.co/api/hotel/ListCity";
+  const headersForRequest = {
+    "content-type": "application/xml; charset=utf-8",
+    "accept": "*/*",
+  };
+  const safeBodySnippet = createSanitizedXmlSnippet(xml, 300);
+
   // Make raw HTTP request to MyGo API
-  const url = "https://admin.mygo.co/api/hotel/ListCity";
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/xml; charset=utf-8",
@@ -123,6 +147,9 @@ const diagnoseMygo = async () => {
 
     // Return diagnostic information
     return {
+      requestUrl: apiUrl,
+      requestHeaders: headersForRequest,
+      requestBodyPreview: safeBodySnippet,
       loginLength,
       passwordLength,
       ok: response.ok,
@@ -133,24 +160,28 @@ const diagnoseMygo = async () => {
   } catch (error) {
     clearTimeout(timeoutId);
 
-    // Return error information in diagnostic format
-    if (error instanceof Error && error.name === "AbortError") {
-      return {
-        loginLength,
-        passwordLength,
-        ok: false,
-        status: 0,
-        contentType: null,
-        preview: "Request timeout after 30 seconds",
-      };
-    }
-
-    return {
+    // Build base diagnostic info that's common to all error cases
+    const baseDiagnostics = {
+      requestUrl: apiUrl,
+      requestHeaders: headersForRequest,
+      requestBodyPreview: safeBodySnippet,
       loginLength,
       passwordLength,
       ok: false,
       status: 0,
       contentType: null,
+    };
+
+    // Return error information in diagnostic format
+    if (error instanceof Error && error.name === "AbortError") {
+      return {
+        ...baseDiagnostics,
+        preview: "Request timeout after 30 seconds",
+      };
+    }
+
+    return {
+      ...baseDiagnostics,
       preview: `Error: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
