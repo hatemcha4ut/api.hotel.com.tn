@@ -24,11 +24,18 @@ Syncs supplier static data into generic inventory tables.
 **Authentication**: Requires Supabase JWT (service role or admin user)
 
 **Actions**:
+- `mygo_diagnose`: Diagnose MyGo API authentication without writing to DB (returns credential lengths, API status, and response preview)
 - `cities`: Sync city list into `inventory_cities`
 - `hotels`: Sync hotel list into `inventory_hotels`
 
 **Example**:
 ```bash
+# Diagnose MyGo API authentication
+curl -X POST https://your-project.supabase.co/functions/v1/inventory-sync \
+  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"mygo_diagnose"}'
+
 # Sync cities
 curl -X POST https://your-project.supabase.co/functions/v1/inventory-sync \
   -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
