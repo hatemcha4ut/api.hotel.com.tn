@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { jsonResponse } from "../_shared/cors.ts";
 import { formatError, ValidationError } from "../_shared/errors.ts";
 import { createSupplierClient } from "../_shared/suppliers/currentSupplierAdapter.ts";
+import { buildListCityXml } from "../_shared/lib/mygoClient.ts";
 
 const syncCities = async (
   supabase: ReturnType<typeof createClient>,
@@ -88,6 +89,73 @@ const syncHotels = async (
   };
 };
 
+const diagnoseMygoDiagnose = async () => {
+  // Read credentials from environment
+  const login = (Deno.env.get("MYGO_LOGIN") ?? "").trim();
+  const password = (Deno.env.get("MYGO_PASSWORD") ?? "").trim();
+
+  const loginLength = login.length;
+  const passwordLength = password.length;
+
+  // Build ListCity XML request
+  const xml = buildListCityXml({ login, password });
+
+  // Make raw HTTP request to MyGo API
+  const url = "https://admin.mygo.co/api/hotel/ListCity";
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/xml; charset=utf-8",
+      },
+      body: xml,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    // Get raw response text
+    const text = await response.text();
+    const preview = text.trim().slice(0, 300);
+
+    // Return diagnostic information
+    return {
+      loginLength,
+      passwordLength,
+      ok: response.ok,
+      status: response.status,
+      contentType: response.headers.get("content-type"),
+      preview,
+    };
+  } catch (error) {
+    clearTimeout(timeoutId);
+    
+    // Return error information in diagnostic format
+    if (error instanceof Error && error.name === "AbortError") {
+      return {
+        loginLength,
+        passwordLength,
+        ok: false,
+        status: 0,
+        contentType: null,
+        preview: "Request timeout after 30 seconds",
+      };
+    }
+    
+    return {
+      loginLength,
+      passwordLength,
+      ok: false,
+      status: 0,
+      contentType: null,
+      preview: `Error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+};
+
 serve(async (request) => {
   if (request.method !== "POST") {
     return jsonResponse({ error: "Method not allowed" }, 405);
@@ -148,9 +216,20 @@ serve(async (request) => {
           200,
         );
       }
+      case "mygo_diagnose": {
+        const result = await diagnoseMygoDiagnose();
+        return jsonResponse(
+          {
+            success: true,
+            action: "mygo_diagnose",
+            ...result,
+          },
+          200,
+        );
+      }
       default:
         throw new ValidationError(
-          `Unknown action: ${action}. Valid actions: cities, hotels`,
+          `Unknown action: ${action}. Valid actions: cities, hotels, mygo_diagnose`,
         );
     }
   } catch (error) {
