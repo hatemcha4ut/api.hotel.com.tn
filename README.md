@@ -15,7 +15,28 @@ This project implements a Supabase Edge Functions backend for hotel bookings usi
 
 ## Edge Functions
 
-### 1. mygo-sync (PRIVATE/Admin)
+### 1. inventory-sync (PRIVATE/Admin)
+
+Syncs supplier static data into generic inventory tables.
+
+**Endpoint**: `/functions/v1/inventory-sync`
+
+**Authentication**: Requires Supabase JWT (service role or admin user)
+
+**Actions**:
+- `cities`: Sync city list into `inventory_cities`
+- `hotels`: Sync hotel list into `inventory_hotels`
+
+**Example**:
+```bash
+# Sync cities
+curl -X POST https://your-project.supabase.co/functions/v1/inventory-sync \
+  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"cities"}'
+```
+
+### 2. mygo-sync (PRIVATE/Admin)
 
 Syncs static data from MyGo API into the database.
 
@@ -44,7 +65,7 @@ curl -X POST https://your-project.supabase.co/functions/v1/mygo-sync \
 }
 ```
 
-### 2. search-hotels (PUBLIC but secured)
+### 3. search-hotels (PUBLIC but secured)
 
 Searches for available hotels using MyGo HotelSearch API.
 
@@ -99,7 +120,7 @@ curl -X POST https://your-project.supabase.co/functions/v1/search-hotels \
 
 **IMPORTANT**: Token is NO LONGER returned. The server fetches a fresh token during booking creation.
 
-### 3. create-booking (PRIVATE)
+### 4. create-booking (PRIVATE)
 
 Creates a booking using MyGo BookingCreation API.
 
@@ -197,6 +218,8 @@ MYGO_PASSWORD=your-mygo-password
 
 ## Database Tables
 
+- `inventory_cities` - Generic city inventory (synced from supplier)
+- `inventory_hotels` - Generic hotel inventory (synced from supplier)
 - `mygo_cities` - Static city data from MyGo ListCity
 - `mygo_hotels` - Static hotel data from MyGo ListHotel
 - `rate_limits` - Rate limiting for public endpoints (uses hashed IP addresses)
@@ -234,6 +257,7 @@ Located in `supabase/functions/_shared/`:
 supabase functions deploy
 
 # Deploy specific function
+supabase functions deploy inventory-sync
 supabase functions deploy mygo-sync
 supabase functions deploy search-hotels
 supabase functions deploy create-booking

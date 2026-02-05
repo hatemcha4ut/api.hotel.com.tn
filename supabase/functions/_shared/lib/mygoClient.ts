@@ -124,6 +124,21 @@ export const buildListCityXml = (credential: MyGoCredential): string => {
 </Root>`;
 };
 
+// Build XML for ListHotel
+export const buildListHotelXml = (
+  credential: MyGoCredential,
+  cityId: number,
+): string => {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<Root>
+  <Credential>
+    <Login>${escapeXml(credential.login)}</Login>
+    <Password>${escapeXml(credential.password)}</Password>
+  </Credential>
+  <CityId>${escapeXml(String(cityId))}</CityId>
+</Root>`;
+};
+
 // Build XML for HotelSearch
 export const buildHotelSearchXml = (
   credential: MyGoCredential,
@@ -259,6 +274,51 @@ export const parseListCityResponse = (xmlString: string): MyGoCity[] => {
   });
 
   return cities;
+};
+
+// Parse ListHotel response
+export const parseListHotelResponse = (
+  xmlString: string,
+  fallbackCityId?: number,
+): MyGoHotel[] => {
+  const doc = parseXmlToObject(xmlString);
+  if (!doc) {
+    throw new Error("Failed to parse ListHotel XML response");
+  }
+
+  const hotels: MyGoHotel[] = [];
+  const hotelElements = doc.querySelectorAll("Hotel");
+
+  hotelElements.forEach((hotelEl) => {
+    const id = getElementNumber(hotelEl, "Id");
+    const name = getElementText(hotelEl, "Name");
+    const cityId = getElementNumber(hotelEl, "CityId") || fallbackCityId;
+
+    if (id && name && cityId) {
+      const star = getElementText(hotelEl, "Star") || undefined;
+      const categoryTitle = getElementText(hotelEl, "CategoryTitle") || undefined;
+      const address = getElementText(hotelEl, "Address") || undefined;
+      const longitude = getElementText(hotelEl, "Longitude") || undefined;
+      const latitude = getElementText(hotelEl, "Latitude") || undefined;
+      const image = getElementText(hotelEl, "Image") || undefined;
+      const note = getElementText(hotelEl, "Note") || undefined;
+
+      hotels.push({
+        id,
+        name,
+        cityId,
+        star,
+        categoryTitle,
+        address,
+        longitude,
+        latitude,
+        image,
+        note,
+      });
+    }
+  });
+
+  return hotels;
 };
 
 // Parse HotelSearch response
@@ -426,6 +486,15 @@ export const listCities = async (credential: MyGoCredential): Promise<MyGoCity[]
   const xml = buildListCityXml(credential);
   const responseXml = await postXml("ListCity", xml, { idempotent: true });
   return parseListCityResponse(responseXml);
+};
+
+export const listHotels = async (
+  credential: MyGoCredential,
+  cityId: number,
+): Promise<MyGoHotel[]> => {
+  const xml = buildListHotelXml(credential, cityId);
+  const responseXml = await postXml("ListHotel", xml, { idempotent: true });
+  return parseListHotelResponse(responseXml, cityId);
 };
 
 export const searchHotels = async (
