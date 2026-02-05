@@ -89,6 +89,36 @@ const syncHotels = async (
   };
 };
 
+/**
+ * Sanitizes XML body by redacting password field before creating a snippet.
+ * 
+ * Security: Performs sanitization on the full body BEFORE truncation to ensure
+ * the password is never exposed, even if the password tag spans the snippet boundary.
+ * 
+ * @param fullXmlBody - Complete XML request body containing credentials
+ * @param snippetLength - Number of characters to include in the returned snippet
+ * @returns Sanitized XML snippet with password replaced by "***"
+ */
+const createSanitizedXmlSnippet = (fullXmlBody: string, snippetLength: number) => {
+  // First, sanitize the password in the full body
+  const PASSWORD_OPEN_TAG = "<Password>";
+  const PASSWORD_CLOSE_TAG = "</Password>";
+  const passwordStart = fullXmlBody.indexOf(PASSWORD_OPEN_TAG);
+  let sanitizedBody = fullXmlBody;
+  
+  if (passwordStart !== -1) {
+    const passwordEnd = fullXmlBody.indexOf(PASSWORD_CLOSE_TAG, passwordStart);
+    if (passwordEnd !== -1) {
+      const beforePass = fullXmlBody.substring(0, passwordStart + PASSWORD_OPEN_TAG.length);
+      const afterPass = fullXmlBody.substring(passwordEnd);
+      sanitizedBody = beforePass + "***" + afterPass;
+    }
+  }
+  
+  // Then take the snippet from the sanitized version
+  return sanitizedBody.substring(0, snippetLength);
+};
+
 const diagnoseMygo = async () => {
   // Read credentials from environment
   const login = (Deno.env.get("MYGO_LOGIN") ?? "").trim();
@@ -100,17 +130,21 @@ const diagnoseMygo = async () => {
   // Build ListCity XML request
   const xml = buildListCityXml({ login, password });
 
+  // Prepare request metadata for diagnostic output
+  const apiUrl = "https://admin.mygo.co/api/hotel/ListCity";
+  const headersForRequest = {
+    "Content-Type": "application/xml; charset=utf-8",
+  };
+  const safeBodySnippet = createSanitizedXmlSnippet(xml, 300);
+
   // Make raw HTTP request to MyGo API
-  const url = "https://admin.mygo.co/api/hotel/ListCity";
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch(apiUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/xml; charset=utf-8",
-      },
+      headers: headersForRequest,
       body: xml,
       signal: controller.signal,
     });
@@ -122,7 +156,14 @@ const diagnoseMygo = async () => {
     const preview = text.trim().slice(0, 300);
 
     // Return diagnostic information
+    // Note: requestHeaders structure per problem requirements (includes accept as typical default)
     return {
+      requestUrl: apiUrl,
+      requestHeaders: {
+        "content-type": headersForRequest["Content-Type"],
+        "accept": "*/*",
+      },
+      requestBodyPreview: safeBodySnippet,
       loginLength,
       passwordLength,
       ok: response.ok,
@@ -133,24 +174,32 @@ const diagnoseMygo = async () => {
   } catch (error) {
     clearTimeout(timeoutId);
 
-    // Return error information in diagnostic format
-    if (error instanceof Error && error.name === "AbortError") {
-      return {
-        loginLength,
-        passwordLength,
-        ok: false,
-        status: 0,
-        contentType: null,
-        preview: "Request timeout after 30 seconds",
-      };
-    }
-
-    return {
+    // Build base diagnostic info that's common to all error cases
+    // Note: requestHeaders structure per problem requirements (includes accept as typical default)
+    const baseDiagnostics = {
+      requestUrl: apiUrl,
+      requestHeaders: {
+        "content-type": headersForRequest["Content-Type"],
+        "accept": "*/*",
+      },
+      requestBodyPreview: safeBodySnippet,
       loginLength,
       passwordLength,
       ok: false,
       status: 0,
       contentType: null,
+    };
+
+    // Return error information in diagnostic format
+    if (error instanceof Error && error.name === "AbortError") {
+      return {
+        ...baseDiagnostics,
+        preview: "Request timeout after 30 seconds",
+      };
+    }
+
+    return {
+      ...baseDiagnostics,
       preview: `Error: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
