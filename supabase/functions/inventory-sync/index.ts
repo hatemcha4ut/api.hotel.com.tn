@@ -156,7 +156,7 @@ const diagnoseMygo = async () => {
     const preview = text.trim().slice(0, 300);
 
     // Return diagnostic information
-    // Note: accept header shows typical default value for diagnostic context
+    // Note: requestHeaders structure per problem requirements (includes accept as typical default)
     return {
       requestUrl: apiUrl,
       requestHeaders: {
@@ -175,7 +175,7 @@ const diagnoseMygo = async () => {
     clearTimeout(timeoutId);
 
     // Build base diagnostic info that's common to all error cases
-    // Note: accept header shows typical default value for diagnostic context
+    // Note: requestHeaders structure per problem requirements (includes accept as typical default)
     const baseDiagnostics = {
       requestUrl: apiUrl,
       requestHeaders: {
