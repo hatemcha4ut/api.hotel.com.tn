@@ -10,6 +10,140 @@
  * - Only publish REAL-TIME BOOKABLE inventory: Hotel.Available=true AND room.OnRequest=false
  */
 
+// Simple XML element wrapper for Deno compatibility
+class SimpleXMLElement {
+  constructor(
+    public tagName: string,
+    public textContent: string = "",
+    public children: SimpleXMLElement[] = [],
+  ) {}
+
+  querySelector(selector: string): SimpleXMLElement | null {
+    // Direct child search first
+    for (const child of this.children) {
+      if (child.tagName === selector) {
+        return child;
+      }
+    }
+    // Deep search
+    for (const child of this.children) {
+      const result = child.querySelector(selector);
+      if (result) return result;
+    }
+    return null;
+  }
+
+  querySelectorAll(selector: string): SimpleXMLElement[] {
+    const results: SimpleXMLElement[] = [];
+    
+    // Check all children recursively
+    for (const child of this.children) {
+      if (child.tagName === selector) {
+        results.push(child);
+      }
+      // Also search in children of children
+      results.push(...child.querySelectorAll(selector));
+    }
+    return results;
+  }
+
+  appendChild(child: SimpleXMLElement): void {
+    this.children.push(child);
+  }
+
+  get documentElement(): SimpleXMLElement {
+    return this;
+  }
+}
+
+// Simple XML Document wrapper
+class SimpleXMLDocument {
+  documentElement: SimpleXMLElement;
+
+  constructor() {
+    this.documentElement = new SimpleXMLElement("Document");
+  }
+
+  querySelector(selector: string): SimpleXMLElement | null {
+    return this.documentElement.querySelector(selector);
+  }
+
+  querySelectorAll(selector: string): SimpleXMLElement[] {
+    return this.documentElement.querySelectorAll(selector);
+  }
+}
+
+// Parse XML string into our simple DOM structure
+const parseSimpleXml = (xmlString: string): SimpleXMLDocument => {
+  const doc = new SimpleXMLDocument();
+  
+  // Tokenize XML
+  const tokens: Array<{ type: string; name?: string; text?: string }> = [];
+  const tokenRegex = /<\?[^?]*\?>|<!\[CDATA\[[^\]]*\]\]>|<!--[^-]*(?:-[^-]+)*-->|<\/([a-zA-Z_][a-zA-Z0-9_:-]*)>|<([a-zA-Z_][a-zA-Z0-9_:-]*)\s*\/?>|([^<]+)/g;
+  
+  let match;
+  while ((match = tokenRegex.exec(xmlString)) !== null) {
+    if (match[0].startsWith("<?") || match[0].startsWith("<!") || match[0].startsWith("<!--")) {
+      // Skip declarations and comments
+      continue;
+    } else if (match[0].startsWith("</")) {
+      // Closing tag
+      tokens.push({ type: "close", name: match[1] });
+    } else if (match[0].startsWith("<")) {
+      // Opening tag (with or without self-close)
+      const tagName = match[2];
+      const isSelfClosing = match[0].endsWith("/>");
+      tokens.push({ type: isSelfClosing ? "selfclose" : "open", name: tagName });
+    } else {
+      // Text content
+      const text = match[3].trim();
+      if (text.length > 0) {
+        tokens.push({ type: "text", text });
+      }
+    }
+  }
+  
+  // Build element tree with validation
+  const stack: SimpleXMLElement[] = [doc.documentElement];
+  const tagStack: string[] = ["Document"];
+  let currentText = "";
+  
+  for (const token of tokens) {
+    if (token.type === "text") {
+      currentText += (token.text || "");
+    } else if (token.type === "open" || token.type === "selfclose") {
+      const element = new SimpleXMLElement(token.name || "", currentText);
+      currentText = "";
+      
+      if (stack.length > 0) {
+        stack[stack.length - 1].appendChild(element);
+      }
+      
+      if (token.type === "open") {
+        stack.push(element);
+        tagStack.push(token.name || "");
+      }
+    } else if (token.type === "close") {
+      if (stack.length > 1) {
+        const closing = stack.pop();
+        tagStack.pop();
+        
+        if (closing) {
+          if (closing.tagName !== token.name) {
+            throw new Error(`XML tag mismatch: expected </${closing.tagName}> but got </${token.name}>`);
+          }
+          if (currentText) {
+            closing.textContent = currentText;
+          }
+        }
+      }
+      currentText = "";
+    }
+  }
+  
+  return doc;
+};
+
 const MYGO_BASE_URL = "https://admin.mygo.co/api/hotel";
 const REQUEST_TIMEOUT_MS = 30000; // 30 seconds
 const MAX_RETRIES = 2; // Only for idempotent calls (ListCity, HotelSearch)
@@ -52,6 +186,13 @@ const validateXmlFormat = (text: string, expectedTag?: string): void => {
   const trimmed = text.trim();
   
   if (!trimmed.startsWith("<")) {
+    const preview = trimmed.slice(0, 200);
+    throw new Error(`Expected XML but got: ${preview}`);
+  }
+
+  // Check for HTML markers that suggest this is HTML, not XML
+  // Be more specific - check for HTML tags as whole words, not substrings
+  if (/(<!DOCTYPE|<html\s|<\/html|<body\s|<\/body|<head\s|<\/head|<meta\s|<title\s|<script\s|<style\s|<link\s|<img\s|<div\s|<span\s|<p\s|<a\s|<table\s|<form\s|<input\s|<h[1-6]\s|<h[1-6]>)/i.test(trimmed)) {
     const preview = trimmed.slice(0, 200);
     throw new Error(`Expected XML but got: ${preview}`);
   }
@@ -241,10 +382,9 @@ export const buildBookingCreationXml = (
 };
 
 // Parse XML to object
-const parseXmlToObject = (xmlString: string): Document | null => {
+const parseXmlToObject = (xmlString: string): any => {
   try {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(xmlString, "application/xml");
+    const doc = parseSimpleXml(xmlString);
     
     // Check for parse errors
     const parseError = doc.querySelector("parsererror");
@@ -261,21 +401,21 @@ const parseXmlToObject = (xmlString: string): Document | null => {
 };
 
 // Extract text content from XML element
-const getElementText = (element: Element | null, tagName: string): string => {
+const getElementText = (element: any, tagName: string): string => {
   if (!element) return "";
   const child = element.querySelector(tagName);
   return child?.textContent?.trim() ?? "";
 };
 
 // Extract number from XML element
-const getElementNumber = (element: Element | null, tagName: string): number => {
+const getElementNumber = (element: any, tagName: string): number => {
   const text = getElementText(element, tagName);
   const num = parseInt(text, 10);
   return isNaN(num) ? 0 : num;
 };
 
 // Extract boolean from XML element
-const getElementBoolean = (element: Element | null, tagName: string): boolean => {
+const getElementBoolean = (element: any, tagName: string): boolean => {
   const text = getElementText(element, tagName).toLowerCase();
   return text === "true" || text === "1";
 };
@@ -298,10 +438,10 @@ export const parseListCityResponse = (xmlString: string): MyGoCity[] => {
   // Verify at least one City element exists
   if (cityElements.length === 0) {
     const preview = sanitized.slice(0, 200);
-    throw new Error(`No City elements found in response. Preview: ${preview}`);
+    throw new Error(`No <City> elements found in ListCity response. Preview: ${preview}`);
   }
   
-  cityElements.forEach((cityEl) => {
+  cityElements.forEach((cityEl: any) => {
     const id = getElementNumber(cityEl, "Id");
     const name = getElementText(cityEl, "Name");
     const region = getElementText(cityEl, "Region");
@@ -336,7 +476,7 @@ export const parseListHotelResponse = (
   const hotels: MyGoHotel[] = [];
   const hotelElements = doc.querySelectorAll("Hotel");
 
-  hotelElements.forEach((hotelEl) => {
+  hotelElements.forEach((hotelEl: any) => {
     const id = getElementNumber(hotelEl, "Id");
     const name = getElementText(hotelEl, "Name");
     const cityId = getElementNumber(hotelEl, "CityId") || fallbackCityId;
@@ -390,7 +530,7 @@ export const parseHotelSearchResponse = (xmlString: string): MyGoSearchResponse 
   const hotels: MyGoHotelSearchResult[] = [];
   const hotelElements = doc.querySelectorAll("Hotel");
   
-  hotelElements.forEach((hotelEl) => {
+  hotelElements.forEach((hotelEl: any) => {
     const id = getElementNumber(hotelEl, "Id");
     const name = getElementText(hotelEl, "Name");
     const available = getElementBoolean(hotelEl, "Available");
@@ -398,7 +538,7 @@ export const parseHotelSearchResponse = (xmlString: string): MyGoSearchResponse 
     const rooms: MyGoRoomResult[] = [];
     const roomElements = hotelEl.querySelectorAll("Room");
     
-    roomElements.forEach((roomEl) => {
+    roomElements.forEach((roomEl: any) => {
       const onRequest = getElementBoolean(roomEl, "OnRequest");
       const priceText = getElementText(roomEl, "Price");
       const price = priceText ? parseFloat(priceText) : undefined;
@@ -410,7 +550,7 @@ export const parseHotelSearchResponse = (xmlString: string): MyGoSearchResponse 
       };
       
       // Add other room fields dynamically
-      Array.from(roomEl.children).forEach((child) => {
+      Array.from(roomEl.children).forEach((child: any) => {
         const tagName = child.tagName;
         if (tagName !== "OnRequest" && tagName !== "Price") {
           roomData[tagName] = child.textContent?.trim() ?? "";
@@ -429,7 +569,7 @@ export const parseHotelSearchResponse = (xmlString: string): MyGoSearchResponse 
       };
       
       // Add other hotel fields dynamically
-      Array.from(hotelEl.children).forEach((child) => {
+      Array.from(hotelEl.children).forEach((child: any) => {
         const tagName = child.tagName;
         if (tagName !== "Id" && tagName !== "Name" && tagName !== "Available" && tagName !== "Room") {
           hotelData[tagName] = child.textContent?.trim() ?? "";
@@ -469,7 +609,7 @@ export const parseBookingCreationResponse = (xmlString: string): MyGoBookingResp
   };
   
   // Add other fields dynamically
-  Array.from(root.children).forEach((child) => {
+  Array.from(root.children).forEach((child: any) => {
     const tagName = child.tagName;
     if (tagName !== "BookingId" && tagName !== "State" && tagName !== "TotalPrice") {
       response[tagName] = child.textContent?.trim() ?? "";
