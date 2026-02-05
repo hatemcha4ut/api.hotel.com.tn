@@ -4,7 +4,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { jsonResponse } from "../_shared/cors.ts";
 import { formatError, ValidationError } from "../_shared/errors.ts";
 import { createSupplierClient } from "../_shared/suppliers/currentSupplierAdapter.ts";
-import { buildListCityXml, type MyGoCredential } from "../_shared/lib/mygoClient.ts";
+import { buildListCityXml, MYGO_BASE_URL, type MyGoCredential } from "../_shared/lib/mygoClient.ts";
+
+const PREVIEW_LENGTH = 300;
 
 const myGoDiagnose = async () => {
   // Read credentials and return only their lengths (never the values)
@@ -19,7 +21,7 @@ const myGoDiagnose = async () => {
   const xml = buildListCityXml(credential);
   
   // Call MyGo API directly without parsing
-  const url = "https://admin.mygo.co/api/hotel/ListCity";
+  const url = `${MYGO_BASE_URL}/ListCity`;
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -38,7 +40,7 @@ const myGoDiagnose = async () => {
     ok: response.ok,
     status: response.status,
     contentType: response.headers.get("content-type"),
-    preview: text.trim().slice(0, 300),
+    preview: text.trim().slice(0, PREVIEW_LENGTH),
   };
 };
 

@@ -144,7 +144,7 @@ const parseSimpleXml = (xmlString: string): SimpleXMLDocument => {
   return doc;
 };
 
-const MYGO_BASE_URL = "https://admin.mygo.co/api/hotel";
+export const MYGO_BASE_URL = "https://admin.mygo.co/api/hotel";
 const REQUEST_TIMEOUT_MS = 30000; // 30 seconds
 const MAX_RETRIES = 2; // Only for idempotent calls (ListCity, HotelSearch)
 const RETRY_BASE_MS = 1000; // Base delay for exponential backoff
