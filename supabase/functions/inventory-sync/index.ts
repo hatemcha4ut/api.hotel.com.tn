@@ -89,7 +89,16 @@ const syncHotels = async (
   };
 };
 
-// Helper to sanitize XML body by redacting password field
+/**
+ * Sanitizes XML body by redacting password field before creating a snippet.
+ * 
+ * Security: Performs sanitization on the full body BEFORE truncation to ensure
+ * the password is never exposed, even if the password tag spans the snippet boundary.
+ * 
+ * @param fullXmlBody - Complete XML request body containing credentials
+ * @param snippetLength - Number of characters to include in the returned snippet
+ * @returns Sanitized XML snippet with password replaced by "***"
+ */
 const createSanitizedXmlSnippet = (fullXmlBody: string, snippetLength: number) => {
   // First, sanitize the password in the full body
   const PASSWORD_OPEN_TAG = "<Password>";
@@ -147,6 +156,7 @@ const diagnoseMygo = async () => {
     const preview = text.trim().slice(0, 300);
 
     // Return diagnostic information
+    // Note: accept header shows typical default value for diagnostic context
     return {
       requestUrl: apiUrl,
       requestHeaders: {
@@ -165,6 +175,7 @@ const diagnoseMygo = async () => {
     clearTimeout(timeoutId);
 
     // Build base diagnostic info that's common to all error cases
+    // Note: accept header shows typical default value for diagnostic context
     const baseDiagnostics = {
       requestUrl: apiUrl,
       requestHeaders: {
