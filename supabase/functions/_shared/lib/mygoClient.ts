@@ -36,6 +36,37 @@ const unescapeXml = (value: string): string => {
   return withoutAmpersand.replaceAll("&amp;", "&");
 };
 
+// Sanitize XML string by removing BOM and null characters
+const sanitizeXml = (xmlString: string): string => {
+  // Remove UTF-8 BOM if present
+  let cleaned = xmlString.charCodeAt(0) === 0xFEFF ? xmlString.slice(1) : xmlString;
+  
+  // Remove null characters
+  cleaned = cleaned.replace(/\u0000/g, "");
+  
+  return cleaned;
+};
+
+// Validate that a string looks like XML
+const validateXmlFormat = (text: string, expectedTag?: string): void => {
+  const trimmed = text.trim();
+  
+  if (!trimmed.startsWith("<")) {
+    const preview = trimmed.slice(0, 200);
+    throw new Error(`Expected XML but got: ${preview}`);
+  }
+  
+  const hasXmlDeclaration = trimmed.includes("<?xml");
+  const hasExpectedTag = expectedTag ? trimmed.includes(`<${expectedTag}`) : true;
+  
+  if (!hasXmlDeclaration && !hasExpectedTag) {
+    const preview = trimmed.slice(0, 200);
+    throw new Error(
+      `Response does not appear to be valid XML (missing <?xml or <${expectedTag}>): ${preview}`
+    );
+  }
+};
+
 // Type definitions
 export interface MyGoCredential {
   login: string;
@@ -251,9 +282,14 @@ const getElementBoolean = (element: Element | null, tagName: string): boolean =>
 
 // Parse ListCity response
 export const parseListCityResponse = (xmlString: string): MyGoCity[] => {
-  const doc = parseXmlToObject(xmlString);
+  // Sanitize and validate XML format
+  const sanitized = sanitizeXml(xmlString);
+  validateXmlFormat(sanitized, "ListCity");
+  
+  const doc = parseXmlToObject(sanitized);
   if (!doc) {
-    throw new Error("Failed to parse ListCity XML response");
+    const preview = sanitized.slice(0, 200);
+    throw new Error(`Failed to parse ListCity XML response. Preview: ${preview}`);
   }
 
   const cities: MyGoCity[] = [];
@@ -281,9 +317,14 @@ export const parseListHotelResponse = (
   xmlString: string,
   fallbackCityId?: number,
 ): MyGoHotel[] => {
-  const doc = parseXmlToObject(xmlString);
+  // Sanitize and validate XML format
+  const sanitized = sanitizeXml(xmlString);
+  validateXmlFormat(sanitized, "ListHotel");
+  
+  const doc = parseXmlToObject(sanitized);
   if (!doc) {
-    throw new Error("Failed to parse ListHotel XML response");
+    const preview = sanitized.slice(0, 200);
+    throw new Error(`Failed to parse ListHotel XML response. Preview: ${preview}`);
   }
 
   const hotels: MyGoHotel[] = [];
@@ -323,9 +364,14 @@ export const parseListHotelResponse = (
 
 // Parse HotelSearch response
 export const parseHotelSearchResponse = (xmlString: string): MyGoSearchResponse => {
-  const doc = parseXmlToObject(xmlString);
+  // Sanitize and validate XML format
+  const sanitized = sanitizeXml(xmlString);
+  validateXmlFormat(sanitized, "HotelSearch");
+  
+  const doc = parseXmlToObject(sanitized);
   if (!doc) {
-    throw new Error("Failed to parse HotelSearch XML response");
+    const preview = sanitized.slice(0, 200);
+    throw new Error(`Failed to parse HotelSearch XML response. Preview: ${preview}`);
   }
 
   const root = doc.documentElement;
@@ -393,9 +439,14 @@ export const parseHotelSearchResponse = (xmlString: string): MyGoSearchResponse 
 
 // Parse BookingCreation response
 export const parseBookingCreationResponse = (xmlString: string): MyGoBookingResponse => {
-  const doc = parseXmlToObject(xmlString);
+  // Sanitize and validate XML format
+  const sanitized = sanitizeXml(xmlString);
+  validateXmlFormat(sanitized, "BookingCreation");
+  
+  const doc = parseXmlToObject(sanitized);
   if (!doc) {
-    throw new Error("Failed to parse BookingCreation XML response");
+    const preview = sanitized.slice(0, 200);
+    throw new Error(`Failed to parse BookingCreation XML response. Preview: ${preview}`);
   }
 
   const root = doc.documentElement;
@@ -454,14 +505,34 @@ export const postXml = async (
       
       clearTimeout(timeoutId);
       
+      // Enhanced diagnostics: log response metadata
+      const contentType = response.headers.get("content-type") || "unknown";
+      console.log(
+        `[MyGo ${serviceName}] Response status: ${response.status}, content-type: ${contentType}`
+      );
+      
+      // Get response text for diagnostics
+      const responseText = await response.text();
+      const preview = responseText.slice(0, 400);
+      
+      // Check response status before parsing
       if (!response.ok) {
+        console.error(
+          `[MyGo ${serviceName}] Error response preview:`,
+          preview
+        );
         throw new Error(
-          `MyGo API error: ${response.status} ${response.statusText}`,
+          `MyGo API error: ${response.status} ${response.statusText}. Response preview: ${preview}`
         );
       }
       
-      const responseText = await response.text();
-      return responseText;
+      // Log safe preview of successful response (no secrets in response)
+      console.log(`[MyGo ${serviceName}] Response preview:`, preview);
+      
+      // Sanitize and validate XML before returning
+      const sanitized = sanitizeXml(responseText);
+      
+      return sanitized;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       
