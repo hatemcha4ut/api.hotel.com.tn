@@ -4,6 +4,43 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { jsonResponse } from "../_shared/cors.ts";
 import { formatError, ValidationError } from "../_shared/errors.ts";
 import { createSupplierClient } from "../_shared/suppliers/currentSupplierAdapter.ts";
+import { buildListCityXml, type MyGoCredential } from "../_shared/lib/mygoClient.ts";
+
+const myGoDiagnose = async () => {
+  // Read credentials and return only their lengths (never the values)
+  const login = (Deno.env.get("MYGO_LOGIN") ?? "").trim();
+  const password = (Deno.env.get("MYGO_PASSWORD") ?? "").trim();
+  
+  const loginLength = login.length;
+  const passwordLength = password.length;
+
+  // Build the ListCity XML request using existing function
+  const credential: MyGoCredential = { login, password };
+  const xml = buildListCityXml(credential);
+  
+  // Call MyGo API directly without parsing
+  const url = "https://admin.mygo.co/api/hotel/ListCity";
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/xml; charset=utf-8",
+    },
+    body: xml,
+  });
+
+  // Get raw response text (do not parse XML)
+  const text = await response.text();
+  
+  // Return diagnostic information
+  return {
+    loginLength,
+    passwordLength,
+    ok: response.ok,
+    status: response.status,
+    contentType: response.headers.get("content-type"),
+    preview: text.trim().slice(0, 300),
+  };
+};
 
 const syncCities = async (
   supabase: ReturnType<typeof createClient>,
@@ -126,6 +163,17 @@ serve(async (request) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     switch (action) {
+      case "mygo_diagnose": {
+        const result = await myGoDiagnose();
+        return jsonResponse(
+          {
+            success: true,
+            action: "mygo_diagnose",
+            ...result,
+          },
+          200,
+        );
+      }
       case "cities": {
         const result = await syncCities(supabase);
         return jsonResponse(
@@ -150,7 +198,7 @@ serve(async (request) => {
       }
       default:
         throw new ValidationError(
-          `Unknown action: ${action}. Valid actions: cities, hotels`,
+          `Unknown action: ${action}. Valid actions: mygo_diagnose, cities, hotels`,
         );
     }
   } catch (error) {
