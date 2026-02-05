@@ -139,7 +139,7 @@ Deno.test("parseListCityResponse should throw error on empty XML response", () =
   assertThrows(
     () => parseListCityResponse(emptyXml),
     Error,
-    "No City elements found in response",
+    "No <City> elements found in ListCity response",
   );
 });
 
@@ -150,7 +150,7 @@ Deno.test("parseListCityResponse should throw error when no City elements", () =
   assertThrows(
     () => parseListCityResponse(wrongXml),
     Error,
-    "No City elements found in response",
+    "No <City> elements found in ListCity response",
   );
 });
 
