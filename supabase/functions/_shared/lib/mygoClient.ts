@@ -675,9 +675,9 @@ export const postXml = async (
       // Check if response is XML before processing
       const trimmed = responseText.trim();
       if (!trimmed.startsWith("<")) {
-        const preview = trimmed.slice(0, 400);
+        const errorPreview = trimmed.slice(0, 400);
         throw new Error(
-          `MyGo returned non-XML response for ${serviceName} (likely invalid credentials or blocked request): ${preview}`
+          `MyGo returned non-XML response for ${serviceName} (likely invalid credentials or blocked request): ${errorPreview}`
         );
       }
       
