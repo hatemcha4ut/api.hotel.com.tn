@@ -89,7 +89,7 @@ const syncHotels = async (
   };
 };
 
-const diagnoseMygoDiagnose = async () => {
+const diagnoseMygo = async () => {
   // Read credentials from environment
   const login = (Deno.env.get("MYGO_LOGIN") ?? "").trim();
   const password = (Deno.env.get("MYGO_PASSWORD") ?? "").trim();
@@ -132,7 +132,7 @@ const diagnoseMygoDiagnose = async () => {
     };
   } catch (error) {
     clearTimeout(timeoutId);
-    
+
     // Return error information in diagnostic format
     if (error instanceof Error && error.name === "AbortError") {
       return {
@@ -144,7 +144,7 @@ const diagnoseMygoDiagnose = async () => {
         preview: "Request timeout after 30 seconds",
       };
     }
-    
+
     return {
       loginLength,
       passwordLength,
@@ -217,7 +217,7 @@ serve(async (request) => {
         );
       }
       case "mygo_diagnose": {
-        const result = await diagnoseMygoDiagnose();
+        const result = await diagnoseMygo();
         return jsonResponse(
           {
             success: true,
