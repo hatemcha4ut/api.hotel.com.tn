@@ -92,13 +92,15 @@ const syncHotels = async (
 // Helper to sanitize XML body by redacting password field
 const createSanitizedXmlSnippet = (fullXmlBody: string, snippetLength: number) => {
   // First, sanitize the password in the full body
-  const passwordStart = fullXmlBody.indexOf("<Password>");
+  const PASSWORD_OPEN_TAG = "<Password>";
+  const PASSWORD_CLOSE_TAG = "</Password>";
+  const passwordStart = fullXmlBody.indexOf(PASSWORD_OPEN_TAG);
   let sanitizedBody = fullXmlBody;
   
   if (passwordStart !== -1) {
-    const passwordEnd = fullXmlBody.indexOf("</Password>", passwordStart);
+    const passwordEnd = fullXmlBody.indexOf(PASSWORD_CLOSE_TAG, passwordStart);
     if (passwordEnd !== -1) {
-      const beforePass = fullXmlBody.substring(0, passwordStart + 10); // +10 for "<Password>"
+      const beforePass = fullXmlBody.substring(0, passwordStart + PASSWORD_OPEN_TAG.length);
       const afterPass = fullXmlBody.substring(passwordEnd);
       sanitizedBody = beforePass + "***" + afterPass;
     }
@@ -122,8 +124,7 @@ const diagnoseMygo = async () => {
   // Prepare request metadata for diagnostic output
   const apiUrl = "https://admin.mygo.co/api/hotel/ListCity";
   const headersForRequest = {
-    "content-type": "application/xml; charset=utf-8",
-    "accept": "*/*",
+    "Content-Type": "application/xml; charset=utf-8",
   };
   const safeBodySnippet = createSanitizedXmlSnippet(xml, 300);
 
@@ -134,9 +135,7 @@ const diagnoseMygo = async () => {
   try {
     const response = await fetch(apiUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/xml; charset=utf-8",
-      },
+      headers: headersForRequest,
       body: xml,
       signal: controller.signal,
     });
@@ -150,7 +149,10 @@ const diagnoseMygo = async () => {
     // Return diagnostic information
     return {
       requestUrl: apiUrl,
-      requestHeaders: headersForRequest,
+      requestHeaders: {
+        "content-type": headersForRequest["Content-Type"],
+        "accept": "*/*",
+      },
       requestBodyPreview: safeBodySnippet,
       loginLength,
       passwordLength,
@@ -165,7 +167,10 @@ const diagnoseMygo = async () => {
     // Build base diagnostic info that's common to all error cases
     const baseDiagnostics = {
       requestUrl: apiUrl,
-      requestHeaders: headersForRequest,
+      requestHeaders: {
+        "content-type": headersForRequest["Content-Type"],
+        "accept": "*/*",
+      },
       requestBodyPreview: safeBodySnippet,
       loginLength,
       passwordLength,
