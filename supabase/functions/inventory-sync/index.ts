@@ -89,7 +89,7 @@ const syncHotels = async (
   };
 };
 
-const diagnoseMYGo = async () => {
+const diagnoseMyGo = async () => {
   // Read credentials and return only their lengths (never the actual values)
   const login = Deno.env.get("MYGO_LOGIN")?.trim() ?? "";
   const password = Deno.env.get("MYGO_PASSWORD")?.trim() ?? "";
@@ -104,26 +104,38 @@ const diagnoseMYGo = async () => {
   const xml = buildListCityXml(credential);
   const url = "https://admin.mygo.co/api/hotel/ListCity";
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/xml; charset=utf-8",
-    },
-    body: xml,
-  });
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/xml; charset=utf-8",
+      },
+      body: xml,
+    });
 
-  // Get raw response text
-  const text = await response.text();
+    // Get raw response text
+    const text = await response.text();
 
-  // Return diagnostic info without throwing error even if not XML
-  return {
-    loginLength,
-    passwordLength,
-    ok: response.ok,
-    status: response.status,
-    contentType: response.headers.get("content-type"),
-    preview: text.trim().slice(0, 300),
-  };
+    // Return diagnostic info without throwing error even if not XML
+    return {
+      loginLength,
+      passwordLength,
+      ok: response.ok,
+      status: response.status,
+      contentType: response.headers.get("content-type"),
+      preview: text.trim().slice(0, 300),
+    };
+  } catch (error) {
+    // Return network error details for diagnostics
+    return {
+      loginLength,
+      passwordLength,
+      ok: false,
+      status: 0,
+      contentType: null,
+      preview: `Network error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 };
 
 serve(async (request) => {
@@ -187,7 +199,7 @@ serve(async (request) => {
         );
       }
       case "mygo_diagnose": {
-        const result = await diagnoseMYGo();
+        const result = await diagnoseMyGo();
         return jsonResponse(
           {
             success: true,
