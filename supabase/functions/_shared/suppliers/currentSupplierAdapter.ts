@@ -12,11 +12,13 @@ import type {
 } from "../supplierClient.ts";
 
 const getSupplierCredential = (): MyGoCredential => {
-  const login = Deno.env.get("MYGO_LOGIN");
-  const password = Deno.env.get("MYGO_PASSWORD");
+  const login = (Deno.env.get("MYGO_LOGIN") ?? "").trim();
+  const password = (Deno.env.get("MYGO_PASSWORD") ?? "").trim();
+
+  console.log("[MYGO] credential lengths", { login: login.length, password: password.length });
 
   if (!login || !password) {
-    throw new Error("MYGO_LOGIN and MYGO_PASSWORD must be configured");
+    throw new Error("MYGO_LOGIN/MYGO_PASSWORD are empty (check Supabase Edge Function secrets values)");
   }
 
   return { login, password };

@@ -672,6 +672,15 @@ export const postXml = async (
         );
       }
       
+      // Check if response is XML before processing
+      const trimmed = responseText.trim();
+      if (!trimmed.startsWith("<")) {
+        const preview = trimmed.slice(0, 400);
+        throw new Error(
+          `MyGo returned non-XML response for ${serviceName} (likely invalid credentials or blocked request): ${preview}`
+        );
+      }
+      
       // Log safe preview of successful response (no secrets in response)
       const preview = responseText.slice(0, 400);
       console.log(`[MyGo ${serviceName}] Response preview:`, preview);
