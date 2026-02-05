@@ -89,6 +89,8 @@ const syncHotels = async (
   };
 };
 
+// DIAGNOSTIC ONLY: This function helps troubleshoot MyGo API auth issues
+// Should only be called in testing/staging environments or by admins
 const myGoDiagnose = async () => {
   // Read credentials and return their lengths only (never return actual values)
   const login = (Deno.env.get("MYGO_LOGIN") ?? "").trim();
