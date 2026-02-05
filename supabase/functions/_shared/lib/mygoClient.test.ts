@@ -169,6 +169,7 @@ Deno.test("parseListCityResponse should parse XML wrapped in Root without ListCi
   assertEquals(cities[0].region, "Nord");
   assertEquals(cities[1].id, 2);
   assertEquals(cities[1].name, "Sousse");
+  assertEquals(cities[1].region, undefined);
 });
 
 console.log("✅ All MyGo Client XML parsing tests passed");
