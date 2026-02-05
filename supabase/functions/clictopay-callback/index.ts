@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
- copilot/create-get-confirmation-edge-function
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+
+// CORS
 
 const allowedOrigins = new Set([
   "https://www.hotel.com.tn",
@@ -14,6 +16,8 @@ const corsHeaders = (origin: string) => ({
   "Vary": "Origin",
 });
 
+// Helpers communs
+
 const jsonResponse = (
   body: Record<string, unknown>,
   status: number,
@@ -25,38 +29,6 @@ const jsonResponse = (
       "Content-Type": "application/json",
       ...(origin ? corsHeaders(origin) : {}),
     },
-  });
-
-serve(async (request) => {
-  const origin = request.headers.get("Origin") ?? "";
-  const allowedOrigin = allowedOrigins.has(origin) ? origin : "";
-
-  if (origin && !allowedOrigin) {
-    return new Response("Origin not allowed", { status: 403 });
-  }
-
-  if (request.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: allowedOrigin ? corsHeaders(allowedOrigin) : {},
-    });
-  }
-
-  if (request.method !== "POST") {
-    return new Response("Method not allowed", {
-      status: 405,
-      headers: allowedOrigin ? corsHeaders(allowedOrigin) : {},
-    });
-  }
-
-  return jsonResponse({ status: "received" }, 200, allowedOrigin);
-
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-
-const jsonResponse = (body: Record<string, unknown>, status: number) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
   });
 
 const toHex = (bytes: Uint8Array) =>
@@ -94,9 +66,28 @@ const generateHmacSignature = async (payload: string, secret: string) => {
   return toHex(new Uint8Array(signature));
 };
 
+// Handler principal
+
 serve(async (request) => {
+  const origin = request.headers.get("Origin") ?? "";
+  const allowedOrigin = allowedOrigins.has(origin) ? origin : "";
+
+  if (origin && !allowedOrigin) {
+    return new Response("Origin not allowed", { status: 403 });
+  }
+
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: allowedOrigin ? corsHeaders(allowedOrigin) : {},
+    });
+  }
+
   if (request.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
+    return new Response("Method not allowed", {
+      status: 405,
+      headers: allowedOrigin ? corsHeaders(allowedOrigin) : {},
+    });
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -109,6 +100,7 @@ serve(async (request) => {
           "Missing required environment variables: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, CLICTOPAY_SECRET",
       },
       500,
+      allowedOrigin,
     );
   }
 
@@ -120,7 +112,7 @@ serve(async (request) => {
   try {
     payload = await request.json();
   } catch {
-    return jsonResponse({ error: "Invalid JSON payload" }, 400);
+    return jsonResponse({ error: "Invalid JSON payload" }, 400, allowedOrigin);
   }
 
   const reference = payload.reference?.trim();
@@ -130,6 +122,7 @@ serve(async (request) => {
     return jsonResponse(
       { error: "Missing reference, status, or signature" },
       400,
+      allowedOrigin,
     );
   }
 
@@ -140,7 +133,7 @@ serve(async (request) => {
   );
   const signatureMatches = timingSafeEqual(expectedSignature, signatureLower);
   if (!signatureMatches) {
-    return jsonResponse({ error: "Invalid signature" }, 403);
+    return jsonResponse({ error: "Invalid signature" }, 403, allowedOrigin);
   }
 
   const normalizedStatus = status.toLowerCase();
@@ -164,12 +157,17 @@ serve(async (request) => {
     return jsonResponse(
       { error: paymentSelectError.message },
       notFound ? 404 : 500,
+      allowedOrigin,
     );
   }
 
   const bookingId = paymentRecord.booking_id;
   if (!bookingId) {
-    return jsonResponse({ error: "Missing booking_id for payment" }, 404);
+    return jsonResponse(
+      { error: "Missing booking_id for payment" },
+      404,
+      allowedOrigin,
+    );
   }
 
   const previousPaymentStatus = paymentRecord.status;
@@ -184,6 +182,7 @@ serve(async (request) => {
     return jsonResponse(
       { error: bookingSelectError.message },
       notFound ? 404 : 500,
+      allowedOrigin,
     );
   }
 
@@ -194,7 +193,11 @@ serve(async (request) => {
 
   if (paymentError) {
     const notFound = paymentError.code === POSTGREST_NOT_FOUND_CODE;
-    return jsonResponse({ error: paymentError.message }, notFound ? 404 : 500);
+    return jsonResponse(
+      { error: paymentError.message },
+      notFound ? 404 : 500,
+      allowedOrigin,
+    );
   }
 
   const { error: bookingError } = await supabase
@@ -215,13 +218,17 @@ serve(async (request) => {
               `Booking update failed (${bookingError.message}); rollback failed: ${rollbackError.message}`,
           },
           500,
+          allowedOrigin,
         );
       }
     }
     const notFound = bookingError.code === POSTGREST_NOT_FOUND_CODE;
-    return jsonResponse({ error: bookingError.message }, notFound ? 404 : 500);
+    return jsonResponse(
+      { error: bookingError.message },
+      notFound ? 404 : 500,
+      allowedOrigin,
+    );
   }
 
-  return jsonResponse({ success: true }, 200);
- main
+  return jsonResponse({ success: true }, 200, allowedOrigin);
 });
