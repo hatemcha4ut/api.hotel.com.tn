@@ -90,20 +90,22 @@ const syncHotels = async (
 };
 
 // Helper to sanitize XML body by redacting password field
-const createSanitizedXmlSnippet = (fullXmlBody: string, maxChars: number) => {
-  const snippet = fullXmlBody.substring(0, maxChars);
+const createSanitizedXmlSnippet = (fullXmlBody: string, snippetLength: number) => {
+  // First, sanitize the password in the full body
+  const passwordStart = fullXmlBody.indexOf("<Password>");
+  let sanitizedBody = fullXmlBody;
   
-  // Find password tags and replace content with asterisks
-  const passwordTagStart = snippet.indexOf("<Password>");
-  if (passwordTagStart === -1) return snippet;
+  if (passwordStart !== -1) {
+    const passwordEnd = fullXmlBody.indexOf("</Password>", passwordStart);
+    if (passwordEnd !== -1) {
+      const beforePass = fullXmlBody.substring(0, passwordStart + 10); // +10 for "<Password>"
+      const afterPass = fullXmlBody.substring(passwordEnd);
+      sanitizedBody = beforePass + "***" + afterPass;
+    }
+  }
   
-  const passwordTagEnd = snippet.indexOf("</Password>", passwordTagStart);
-  if (passwordTagEnd === -1) return snippet;
-  
-  const beforePassword = snippet.substring(0, passwordTagStart + 10); // +10 for "<Password>"
-  const afterPassword = snippet.substring(passwordTagEnd);
-  
-  return beforePassword + "***" + afterPassword;
+  // Then take the snippet from the sanitized version
+  return sanitizedBody.substring(0, snippetLength);
 };
 
 const diagnoseMygo = async () => {
