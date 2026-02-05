@@ -102,7 +102,7 @@ Deno.test("parseListHotelResponse should handle UTF-8 BOM", () => {
 Deno.test("parseHotelSearchResponse should handle null characters", () => {
   const xmlWithNull = '<?xml version="1.0" encoding="utf-8"?>' +
     '<Root>\u0000<Token>abc123</Token>' +
-    '<Hotel><Id>101</Id><Name>Hotel Test</Name><Available>true</Available></Hotel>' +
+    '<Hotels><Hotel><Id>101</Id><Name>Hotel Test</Name><Available>true</Available></Hotel></Hotels>' +
     '</Root>';
   
   const result = parseHotelSearchResponse(xmlWithNull);

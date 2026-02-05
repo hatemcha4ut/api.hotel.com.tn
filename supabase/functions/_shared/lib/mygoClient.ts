@@ -505,18 +505,18 @@ export const postXml = async (
       
       clearTimeout(timeoutId);
       
+      // Get response text for diagnostics
+      const responseText = await response.text();
+      
       // Enhanced diagnostics: log response metadata
       const contentType = response.headers.get("content-type") || "unknown";
       console.log(
         `[MyGo ${serviceName}] Response status: ${response.status}, content-type: ${contentType}`
       );
       
-      // Get response text for diagnostics
-      const responseText = await response.text();
-      const preview = responseText.slice(0, 400);
-      
       // Check response status before parsing
       if (!response.ok) {
+        const preview = responseText.slice(0, 400);
         console.error(
           `[MyGo ${serviceName}] Error response preview:`,
           preview
@@ -527,6 +527,7 @@ export const postXml = async (
       }
       
       // Log safe preview of successful response (no secrets in response)
+      const preview = responseText.slice(0, 400);
       console.log(`[MyGo ${serviceName}] Response preview:`, preview);
       
       // Sanitize and validate XML before returning
