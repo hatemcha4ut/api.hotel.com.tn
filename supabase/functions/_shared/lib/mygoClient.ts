@@ -284,7 +284,7 @@ const getElementBoolean = (element: Element | null, tagName: string): boolean =>
 export const parseListCityResponse = (xmlString: string): MyGoCity[] => {
   // Sanitize and validate XML format
   const sanitized = sanitizeXml(xmlString);
-  validateXmlFormat(sanitized, "ListCity");
+  validateXmlFormat(sanitized);
   
   const doc = parseXmlToObject(sanitized);
   if (!doc) {
@@ -294,6 +294,12 @@ export const parseListCityResponse = (xmlString: string): MyGoCity[] => {
 
   const cities: MyGoCity[] = [];
   const cityElements = doc.querySelectorAll("City");
+  
+  // Verify at least one City element exists
+  if (cityElements.length === 0) {
+    const preview = sanitized.slice(0, 200);
+    throw new Error(`No <City> elements found in ListCity response. Preview: ${preview}`);
+  }
   
   cityElements.forEach((cityEl) => {
     const id = getElementNumber(cityEl, "Id");
