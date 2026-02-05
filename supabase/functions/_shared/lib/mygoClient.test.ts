@@ -132,21 +132,43 @@ Deno.test("parseListCityResponse should provide helpful error for malformed XML"
   );
 });
 
-// Test 11: Handle empty response
-Deno.test("parseListCityResponse should handle empty XML response", () => {
+// Test 11: Handle empty response - should throw error
+Deno.test("parseListCityResponse should throw error on empty XML response", () => {
   const emptyXml = '<?xml version="1.0" encoding="utf-8"?><Root><ListCity></ListCity></Root>';
   
-  const cities = parseListCityResponse(emptyXml);
-  assertEquals(cities.length, 0);
+  assertThrows(
+    () => parseListCityResponse(emptyXml),
+    Error,
+    "No City elements found in response",
+  );
 });
 
-// Test 12: Handle response without expected root tag
-Deno.test("parseListCityResponse should detect missing expected tag", () => {
+// Test 12: Handle response without City elements - should throw error
+Deno.test("parseListCityResponse should throw error when no City elements", () => {
   const wrongXml = '<?xml version="1.0" encoding="utf-8"?><Root><WrongTag></WrongTag></Root>';
   
-  // This should still parse as valid XML but return empty array
-  const cities = parseListCityResponse(wrongXml);
-  assertEquals(cities.length, 0);
+  assertThrows(
+    () => parseListCityResponse(wrongXml),
+    Error,
+    "No City elements found in response",
+  );
+});
+
+// Test 13: Parse Root-wrapped response (without ListCity tag)
+Deno.test("parseListCityResponse should handle Root-wrapped response", () => {
+  const rootWrappedXml = '<?xml version="1.0" encoding="utf-8"?>' +
+    '<Root>' +
+    '<City><Id>1</Id><Name>Tunis</Name><Region>Nord</Region></City>' +
+    '<City><Id>2</Id><Name>Sousse</Name></City>' +
+    '</Root>';
+  
+  const cities = parseListCityResponse(rootWrappedXml);
+  assertEquals(cities.length, 2);
+  assertEquals(cities[0].id, 1);
+  assertEquals(cities[0].name, "Tunis");
+  assertEquals(cities[0].region, "Nord");
+  assertEquals(cities[1].id, 2);
+  assertEquals(cities[1].name, "Sousse");
 });
 
 console.log("✅ All MyGo Client XML parsing tests passed");
