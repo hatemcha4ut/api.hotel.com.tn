@@ -7,6 +7,8 @@ import { createSupplierClient } from "../_shared/suppliers/currentSupplierAdapte
 import {
   buildListCityXml,
   createBooking,
+  listCities,
+  listHotels,
   searchHotels,
   type MyGoBookingParams,
   type MyGoCredential,
@@ -334,9 +336,47 @@ serve(async (request) => {
           200,
         );
       }
+      case "mygo_selftest": {
+        const credential = getMyGoCredential();
+        const cities = await listCities(credential);
+        const normalizeName = (value: unknown) =>
+          typeof value === "string" ? value.trim().toLowerCase() : "";
+        const tunisianCity = cities.find((city) => {
+          const record = city as Record<string, unknown>;
+          const country = record.country;
+          const countryRecord = country && typeof country === "object"
+            ? (country as Record<string, unknown>)
+            : null;
+          const countryName = countryRecord?.Name ?? countryRecord?.name;
+          if (normalizeName(countryName) === "tunisie") {
+            return true;
+          }
+          return normalizeName(city.region) === "tunisie";
+        }) ?? cities[0];
+
+        if (!tunisianCity) {
+          throw new Error("MyGo ListCity returned no cities");
+        }
+
+        const hotels = await listHotels(credential, tunisianCity.id);
+        return jsonResponse(
+          {
+            success: true,
+            action: "mygo_selftest",
+            loginLength: credential.login.length,
+            city: {
+              id: tunisianCity.id,
+              name: tunisianCity.name,
+            },
+            cityCount: cities.length,
+            hotelCount: hotels.length,
+          },
+          200,
+        );
+      }
       default:
         throw new ValidationError(
-          `Unknown action: ${action}. Valid actions: cities, hotels, search, booking, mygo_diagnose`,
+          `Unknown action: ${action}. Valid actions: cities, hotels, search, booking, mygo_diagnose, mygo_selftest`,
         );
     }
   } catch (error) {
