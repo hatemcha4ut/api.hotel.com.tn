@@ -895,7 +895,7 @@ export const listHotels = async (
     : null;
 
   if (!listHotel || listHotel.length === 0) {
-    throw new Error("No hotel entries found in ListHotel response");
+    throw new Error(`ListHotel returned no hotels for cityId ${cityId}`);
   }
 
   const hotels: MyGoHotel[] = [];
@@ -903,7 +903,7 @@ export const listHotels = async (
     const id = Number(hotel.Id);
     const name = hotel.Name ? String(hotel.Name) : "";
     const cityIdValue = Number(hotel.CityId);
-    // Fall back to the requested cityId when MyGo omits or zeroes the CityId field.
+    // Fall back to the requested cityId when MyGo omits or zeros the CityId field.
     const resolvedCityId = Number.isFinite(cityIdValue) && cityIdValue !== 0
       ? cityIdValue
       : cityId;
@@ -937,7 +937,7 @@ export const searchHotels = async (
     : "";
 
   if (!token) {
-    throw new Error("Token not found in HotelSearch response");
+    throw new Error("HotelSearch response missing required Token field");
   }
 
   const hotelEntries = Array.isArray((data as { Hotels?: unknown }).Hotels)
@@ -945,7 +945,7 @@ export const searchHotels = async (
     : null;
 
   if (!hotelEntries) {
-    throw new Error("No Hotels found in HotelSearch response");
+    throw new Error("HotelSearch response missing Hotels array");
   }
 
   const hotels: MyGoHotelSearchResult[] = [];
