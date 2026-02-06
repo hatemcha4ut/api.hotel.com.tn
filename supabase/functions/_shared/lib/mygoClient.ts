@@ -253,25 +253,38 @@ export interface MyGoHotelSearchResult {
   name: string;
   available: boolean;
   rooms: MyGoRoomResult[];
+  cityId?: number;
+  cityName?: string;
+  categoryTitle?: string;
+  star?: number;
+  address?: string;
+  image?: string;
+  themes?: string[];
+  facilities?: unknown[];
+  hasInstantConfirmation?: boolean;
   [key: string]: unknown;
 }
 
 export interface MyGoRoomResult {
   onRequest: boolean;
   price?: number;
+  roomId?: number;
+  roomName?: string;
+  basePrice?: number;
+  priceWithMarkup?: number;
+  boardCode?: string;
+  boardName?: string;
+  adults?: number;
+  childrenAges?: number[];
+  token?: string;
+  cancellationPolicy?: unknown[];
   [key: string]: unknown;
 }
 
 type MyGoHotelSearchJson = Record<string, unknown> & {
-  Id?: number;
-  Name?: string;
-  Available?: boolean;
-  Rooms?: MyGoRoomSearchJson[];
-};
-
-type MyGoRoomSearchJson = Record<string, unknown> & {
-  OnRequest?: boolean;
-  Price?: number;
+  Hotel?: Record<string, unknown>;
+  Token?: unknown;
+  Price?: { Boarding?: Array<Record<string, unknown>> };
 };
 
 export interface MyGoSearchResponse {
@@ -399,9 +412,7 @@ export const buildHotelSearchPayload = (
 ): {
   Credential: { Login: string; Password: string };
   SearchDetails: {
-    CityId: number;
     BookingDetails: {
-      CityId: number;
       CheckIn: string;
       CheckOut: string;
       Hotels: number[];
@@ -421,9 +432,7 @@ export const buildHotelSearchPayload = (
       Password: credential.password,
     },
     SearchDetails: {
-      CityId: params.cityId,
       BookingDetails: {
-        CityId: params.cityId,
         CheckIn: params.checkIn,
         CheckOut: params.checkOut,
         Hotels: params.hotelIds ?? [],
@@ -431,7 +440,7 @@ export const buildHotelSearchPayload = (
       Filters: {
         Keywords: "",
         Category: [],
-        OnlyAvailable: params.onlyAvailable ?? true,
+        OnlyAvailable: params.onlyAvailable ?? false,
         Tags: [],
       },
       Rooms: params.rooms.map((room) => ({
@@ -988,49 +997,184 @@ export const searchHotels = async (
     );
   }
 
-  const searchId = (data as { SearchId?: unknown }).SearchId;
-  if (typeof searchId !== "string" || !searchId) {
-    throw new Error("MyGo HotelSearch response missing SearchId");
-  }
-
-  const hotelsJson = Array.isArray((data as { HotelSearch?: unknown }).HotelSearch)
+  const items = Array.isArray((data as { HotelSearch?: unknown }).HotelSearch)
     ? ((data as { HotelSearch: MyGoHotelSearchJson[] }).HotelSearch)
     : [];
 
-  const hotels: MyGoHotelSearchResult[] = [];
+  const hotelsById = new Map<number, MyGoHotelSearchResult>();
+  let fallbackToken = "";
 
-  hotelsJson.forEach((hotel) => {
-    const idValue = hotel.Id;
+  items.forEach((item) => {
+    if (!item || typeof item !== "object") {
+      return;
+    }
+
+    const hotelData = typeof item.Hotel === "object" && item.Hotel !== null
+      ? item.Hotel
+      : {};
+    const idValue = (hotelData as { Id?: unknown }).Id;
     const id = typeof idValue === "number" ? idValue : Number(idValue);
-    const name = typeof hotel.Name === "string" ? hotel.Name : "";
+    const name = typeof (hotelData as { Name?: unknown }).Name === "string"
+      ? String((hotelData as { Name?: unknown }).Name)
+      : "";
     if (!Number.isFinite(id) || id === 0 || !name) {
       return;
     }
 
-    const roomsJson = Array.isArray(hotel.Rooms) ? hotel.Rooms : [];
-    const rooms: MyGoRoomResult[] = roomsJson.map((room) => ({
-      ...room,
-      onRequest: room.OnRequest === true,
-      price: room.Price ?? undefined,
-    }));
+    const token = typeof item.Token === "string" ? item.Token : undefined;
+    if (!fallbackToken && token) {
+      fallbackToken = token;
+    }
 
-    const hotelResult: MyGoHotelSearchResult = {
-      id,
-      name,
-      available: hotel.Available === true,
-      rooms,
-    };
+    let hotelResult = hotelsById.get(id);
+    if (!hotelResult) {
+      const categoryData = typeof (hotelData as { Category?: unknown }).Category === "object" &&
+          (hotelData as { Category?: unknown }).Category !== null
+        ? (hotelData as { Category?: Record<string, unknown> }).Category
+        : {};
+      const cityData = typeof (hotelData as { City?: unknown }).City === "object" &&
+          (hotelData as { City?: unknown }).City !== null
+        ? (hotelData as { City?: Record<string, unknown> }).City
+        : {};
+      const cityIdValue = (cityData as { Id?: unknown }).Id;
+      const cityId = normalizeJsonNumber(
+        typeof cityIdValue === "number" ? cityIdValue : Number(cityIdValue),
+      );
+      const starValue = (categoryData as { Star?: unknown }).Star;
+      const star = normalizeJsonNumber(
+        typeof starValue === "number" ? starValue : Number(starValue),
+      );
+      const themes = Array.isArray((hotelData as { Theme?: unknown }).Theme)
+        ? (hotelData as { Theme: unknown[] }).Theme.map((theme) => String(theme))
+        : undefined;
+      const facilities = Array.isArray((hotelData as { Facilities?: unknown }).Facilities)
+        ? (hotelData as { Facilities: unknown[] }).Facilities
+        : undefined;
 
-    Object.entries(hotel).forEach(([key, value]) => {
-      if (key !== "Id" && key !== "Name" && key !== "Available" && key !== "Rooms") {
-        hotelResult[key] = value;
+      hotelResult = {
+        id,
+        name,
+        available: false,
+        rooms: [],
+        cityId,
+        cityName: typeof (cityData as { Name?: unknown }).Name === "string"
+          ? String((cityData as { Name?: unknown }).Name)
+          : undefined,
+        categoryTitle: typeof (categoryData as { Title?: unknown }).Title === "string"
+          ? String((categoryData as { Title?: unknown }).Title)
+          : undefined,
+        star,
+        address: typeof (hotelData as { Adress?: unknown }).Adress === "string"
+          ? String((hotelData as { Adress?: unknown }).Adress)
+          : undefined,
+        image: typeof (hotelData as { Image?: unknown }).Image === "string"
+          ? String((hotelData as { Image?: unknown }).Image)
+          : undefined,
+        themes,
+        facilities,
+      };
+
+      const note = (hotelData as { Note?: unknown }).Note;
+      if (note !== undefined) {
+        hotelResult.note = note;
       }
-    });
 
-    hotels.push(hotelResult);
+      hotelsById.set(id, hotelResult);
+    }
+
+    const priceData = typeof item.Price === "object" && item.Price !== null
+      ? (item.Price as Record<string, unknown>)
+      : undefined;
+    const boardings = Array.isArray(priceData?.Boarding) ? priceData?.Boarding : [];
+
+    boardings.forEach((boarding) => {
+      if (!boarding || typeof boarding !== "object") {
+        return;
+      }
+
+      const boardingData = boarding as Record<string, unknown>;
+      const boardCode = boardingData.Code != null ? String(boardingData.Code) : undefined;
+      const boardName = boardingData.Name != null ? String(boardingData.Name) : undefined;
+      const paxList = Array.isArray(boardingData.Pax) ? boardingData.Pax : [];
+
+      paxList.forEach((pax) => {
+        if (!pax || typeof pax !== "object") {
+          return;
+        }
+
+        const paxData = pax as Record<string, unknown>;
+        const adultValue = paxData.Adult;
+        const adults = normalizeJsonNumber(
+          typeof adultValue === "number" ? adultValue : Number(adultValue),
+        );
+        const childrenArray = Array.isArray(paxData.Child) ? paxData.Child : [];
+        const childrenAges = childrenArray.length > 0
+          ? childrenArray
+            .map((age) => Number(age))
+            .filter((age) => Number.isFinite(age))
+          : undefined;
+        const roomList = Array.isArray(paxData.Rooms) ? paxData.Rooms : [];
+
+        roomList.forEach((room) => {
+          if (!room || typeof room !== "object") {
+            return;
+          }
+
+          const roomData = room as Record<string, unknown>;
+          const onRequest = parseJsonBoolean(roomData.StopReservation);
+          const price = normalizeJsonNumber(
+            roomData.Price != null ? Number(roomData.Price) : undefined,
+          );
+          const basePrice = normalizeJsonNumber(
+            roomData.BasePrice != null ? Number(roomData.BasePrice) : undefined,
+          );
+          const priceWithMarkup = normalizeJsonNumber(
+            roomData.PriceWithAffiliateMarkup != null
+              ? Number(roomData.PriceWithAffiliateMarkup)
+              : undefined,
+          );
+          const roomId = normalizeJsonNumber(
+            roomData.Id != null ? Number(roomData.Id) : undefined,
+          );
+          const roomName = roomData.Name != null ? String(roomData.Name) : undefined;
+          const cancellationPolicy = Array.isArray(roomData.CancellationPolicy)
+            ? roomData.CancellationPolicy
+            : undefined;
+
+          hotelResult.rooms.push({
+            ...roomData,
+            onRequest,
+            price,
+            roomId,
+            roomName,
+            basePrice,
+            priceWithMarkup,
+            boardCode,
+            boardName,
+            adults,
+            childrenAges,
+            token,
+            cancellationPolicy,
+          });
+
+          if (!onRequest) {
+            hotelResult.available = true;
+          }
+        });
+      });
+    });
   });
 
-  return { token: searchId, hotels };
+  const hotels = Array.from(hotelsById.values()).map((hotel) => {
+    const hasInstantConfirmation = hotel.rooms.some((room) => room.onRequest === false);
+    return {
+      ...hotel,
+      available: hasInstantConfirmation,
+      hasInstantConfirmation,
+    };
+  });
+
+  return { token: fallbackToken, hotels };
 };
 
 export const createBooking = async (

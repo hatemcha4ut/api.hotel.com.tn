@@ -308,18 +308,49 @@ Deno.test("searchHotels should map JSON HotelSearch response", async () => {
     receivedBody = String(init?.body ?? "");
     return new Response(
       JSON.stringify({
-        SearchId: "search-123",
         HotelSearch: [
           {
-            Id: 101,
-            Name: "Hotel Test",
-            Available: true,
-            ExtraField: "value",
-            Rooms: [
-              { OnRequest: false, Price: 120.5, RoomId: 22 },
-            ],
+            Hotel: {
+              Id: 101,
+              Name: "Hotel Test",
+              Category: { Title: "5 étoiles", Star: 5 },
+              City: { Id: 10, Name: "Hammamet" },
+              Adress: "Main Street",
+              Image: "image.png",
+              Facilities: [{ Title: "Spa" }],
+              Theme: ["Famille"],
+              Note: "note",
+            },
+            Token: "token-xyz",
+            Price: {
+              Boarding: [
+                {
+                  Code: "LPD",
+                  Name: "Logement Petit Déjeuner",
+                  Pax: [
+                    {
+                      Adult: 2,
+                      Child: [3, 8],
+                      Rooms: [
+                        {
+                          Id: 97,
+                          Name: "Standard",
+                          Price: "642.000",
+                          BasePrice: "802.500",
+                          PriceWithAffiliateMarkup: "674.100",
+                          StopReservation: false,
+                          CancellationPolicy: [{ Policy: "test" }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
           },
         ],
+        CountResults: 1,
+        ErrorMessage: [],
       }),
       {
         status: 200,
@@ -332,19 +363,37 @@ Deno.test("searchHotels should map JSON HotelSearch response", async () => {
     cityId: 1,
     checkIn: "2025-01-10",
     checkOut: "2025-01-12",
+    hotelIds: [101],
     rooms: [{ adults: 2, childrenAges: [5] }],
     currency: "TND" as const,
-    onlyAvailable: true,
   };
 
   try {
     const result = await searchHotels({ login: "user", password: "pass" }, params);
-    assertEquals(result.token, "search-123");
+    assertEquals(result.token, "token-xyz");
     assertEquals(result.hotels.length, 1);
+    assertEquals(result.hotels[0].available, true);
+    assertEquals(result.hotels[0].cityId, 10);
+    assertEquals(result.hotels[0].cityName, "Hammamet");
+    assertEquals(result.hotels[0].categoryTitle, "5 étoiles");
+    assertEquals(result.hotels[0].star, 5);
+    assertEquals(result.hotels[0].address, "Main Street");
+    assertEquals(result.hotels[0].image, "image.png");
+    assertEquals(result.hotels[0].themes, ["Famille"]);
+    assertEquals(result.hotels[0].facilities, [{ Title: "Spa" }]);
+    assertEquals(result.hotels[0].note, "note");
     assertEquals(result.hotels[0].rooms[0].onRequest, false);
-    assertEquals(result.hotels[0].rooms[0].price, 120.5);
-    assertEquals(result.hotels[0].rooms[0].RoomId, 22);
-    assertEquals(result.hotels[0].ExtraField, "value");
+    assertEquals(result.hotels[0].rooms[0].price, 642);
+    assertEquals(result.hotels[0].rooms[0].roomId, 97);
+    assertEquals(result.hotels[0].rooms[0].roomName, "Standard");
+    assertEquals(result.hotels[0].rooms[0].basePrice, 802.5);
+    assertEquals(result.hotels[0].rooms[0].priceWithMarkup, 674.1);
+    assertEquals(result.hotels[0].rooms[0].boardCode, "LPD");
+    assertEquals(result.hotels[0].rooms[0].boardName, "Logement Petit Déjeuner");
+    assertEquals(result.hotels[0].rooms[0].adults, 2);
+    assertEquals(result.hotels[0].rooms[0].childrenAges, [3, 8]);
+    assertEquals(result.hotels[0].rooms[0].token, "token-xyz");
+    assertEquals(result.hotels[0].rooms[0].cancellationPolicy, [{ Policy: "test" }]);
     assertEquals(
       JSON.parse(receivedBody),
       buildHotelSearchPayload({ login: "user", password: "pass" }, params),
