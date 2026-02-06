@@ -1017,10 +1017,6 @@ const extractListResponse = (
     throw new Error(`Missing ${listKey} in response`);
   }
 
-  if (list.length === 0) {
-    throw new Error(`Empty ${listKey} array in response`);
-  }
-
   return list;
 };
 
