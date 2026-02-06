@@ -77,7 +77,7 @@ Searches for available hotels using MyGo HotelSearch API.
 - CORS restricted to `https://www.hotel.com.tn` and `http://localhost:5173`
 - Rate limited: 60 requests/hour per IP (using hashed IP addresses for privacy)
 - Cached responses: 120 seconds TTL (cache is token-free)
-- Only returns real-time bookable inventory (Available=true, OnRequest=false)
+- Returns visible inventory (Available/onRequest flags preserved for frontend)
 - **BREAKING CHANGE (PR13)**: Token is NO LONGER returned to client
 
 **Request**:
@@ -102,11 +102,14 @@ curl -X POST https://your-project.supabase.co/functions/v1/search-hotels \
 **Response**:
 ```json
 {
+  "rawCount": 1,
+  "visibleCount": 1,
   "hotels": [
     {
       "id": 101,
       "name": "Hotel Example",
       "available": true,
+      "hasInstantConfirmation": true,
       "rooms": [
         {
           "onRequest": false,
@@ -197,7 +200,7 @@ curl -X POST https://your-project.supabase.co/functions/v1/create-booking \
 1. **Authentication**: Credentials (MYGO_LOGIN, MYGO_PASSWORD) are embedded in XML request body, not HTTP headers
 2. **Token Flow (UPDATED)**: Server calls HotelSearch to get fresh Token → Token is used in BookingCreation (all server-side)
 3. **PreBooking**: Set `preBooking: true` for tentative bookings before final confirmation
-4. **Bookable Inventory**: Only hotels with `Available=true` and rooms with `OnRequest=false` are returned
+4. **Visible Inventory**: Hotels are returned even if `Available=false` or rooms are `OnRequest=true`
 5. **OnlyAvailable**: Always set to `true` in HotelSearch requests for real-time availability
 
 ## Environment Variables

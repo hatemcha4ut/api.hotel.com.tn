@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import {
   searchHotels,
-  filterBookableHotels,
+  filterVisibleHotels,
   type MyGoCredential,
   type MyGoSearchParams,
 } from "../_shared/lib/mygoClient.ts";
@@ -164,13 +164,15 @@ serve(async (request) => {
     const credential = getMyGoCredential();
     const searchResult = await searchHotels(credential, mygoParams);
 
-    // Filter out non-bookable hotels
-    const bookableHotels = filterBookableHotels(searchResult.hotels);
+    // Filter visible hotels (keep onRequest and unavailable hotels)
+    const visibleHotels = filterVisibleHotels(searchResult.hotels);
 
     // BREAKING CHANGE: Do NOT return token to client
     // Token is kept server-side only for booking creation
     const response = {
-      hotels: bookableHotels,
+      rawCount: searchResult.hotels.length,
+      visibleCount: visibleHotels.length,
+      hotels: visibleHotels,
     };
 
     // Cache the token-free response

@@ -1060,11 +1060,48 @@ export const createBooking = async (
 export const filterBookableHotels = (
   hotels: MyGoHotelSearchResult[],
 ): MyGoHotelSearchResult[] => {
-  return hotels
-    .filter((hotel) => hotel.available === true)
+  const totalHotels = hotels.length;
+  let removedUnavailableHotels = 0;
+  let removedOnRequestRooms = 0;
+  const filteredHotels = hotels
+    .filter((hotel) => {
+      const isAvailable = hotel.available === true;
+      if (!isAvailable) {
+        removedUnavailableHotels += 1;
+      }
+      return isAvailable;
+    })
     .map((hotel) => ({
       ...hotel,
-      rooms: hotel.rooms.filter((room) => room.onRequest === false),
+      rooms: hotel.rooms.filter((room) => {
+        const keepRoom = room.onRequest === false;
+        if (!keepRoom) {
+          removedOnRequestRooms += 1;
+        }
+        return keepRoom;
+      }),
     }))
     .filter((hotel) => hotel.rooms.length > 0);
+
+  console.log("[MYGO] filterBookableHotels counts", {
+    totalHotels,
+    removedUnavailableHotels,
+    removedOnRequestRooms,
+  });
+
+  return filteredHotels;
+};
+
+export const filterVisibleHotels = (
+  hotels: MyGoHotelSearchResult[],
+): MyGoHotelSearchResult[] => {
+  return hotels.map((hotel) => {
+    const rooms = hotel.rooms.filter((room) => room.price != null);
+    const hasInstantConfirmation = rooms.some((room) => room.onRequest === false);
+    return {
+      ...hotel,
+      rooms,
+      hasInstantConfirmation,
+    };
+  });
 };
