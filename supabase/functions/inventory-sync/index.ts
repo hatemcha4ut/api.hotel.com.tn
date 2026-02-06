@@ -104,7 +104,7 @@ const getMyGoCredential = (): MyGoCredential => {
   const password = (Deno.env.get("MYGO_PASSWORD") ?? "").trim();
 
   if (!login || !password) {
-    throw new Error("MYGO_LOGIN/MYGO_PASSWORD are empty (check Supabase Edge Function secret values)");
+    throw new Error("MYGO_LOGIN and MYGO_PASSWORD are empty (check Supabase Edge Function secret values)");
   }
 
   return { login, password };

@@ -895,7 +895,7 @@ export const listHotels = async (
     : null;
 
   if (!listHotel || listHotel.length === 0) {
-    throw new Error("No ListHotel elements found in ListHotel response");
+    throw new Error("No hotel entries found in ListHotel response");
   }
 
   const hotels: MyGoHotel[] = [];
@@ -903,6 +903,7 @@ export const listHotels = async (
     const id = Number(hotel.Id);
     const name = hotel.Name ? String(hotel.Name) : "";
     const cityIdValue = Number(hotel.CityId);
+    // Fall back to the requested cityId when MyGo omits or zeroes the CityId field.
     const resolvedCityId = Number.isFinite(cityIdValue) && cityIdValue !== 0
       ? cityIdValue
       : cityId;
