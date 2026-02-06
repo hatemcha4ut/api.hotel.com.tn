@@ -786,7 +786,7 @@ export const listCities = async (credential: MyGoCredential): Promise<MyGoCity[]
     const name = city.Name ? String(city.Name) : "";
     const region = city.Region ? String(city.Region) : undefined;
 
-    if (id && name) {
+    if (Number.isFinite(id) && name) {
       cities.push({
         id,
         name,
