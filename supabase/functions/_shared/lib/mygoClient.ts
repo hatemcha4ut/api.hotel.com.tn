@@ -458,7 +458,7 @@ export const parseListCityResponse = (xmlString: string): MyGoCity[] => {
     const name = getElementText(cityEl, "Name");
     const region = getElementText(cityEl, "Region");
     
-    if (id && name) {
+    if (Number.isFinite(id) && name) {
       cities.push({
         id,
         name,
