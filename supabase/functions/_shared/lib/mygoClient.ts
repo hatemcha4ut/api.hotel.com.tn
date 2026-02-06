@@ -817,11 +817,11 @@ export const postJson = async (
       signal: controller.signal,
     });
 
-    const text = await response.text();
+    const responseText = await response.text();
     const contentType = response.headers.get("content-type") || "";
 
     if (!response.ok) {
-      throw new Error(`MyGo error ${response.status}: ${text.slice(0, 400)}`);
+      throw new Error(`MyGo error ${response.status}: ${responseText.slice(0, 400)}`);
     }
 
     if (!contentType.toLowerCase().includes("application/json")) {
@@ -830,7 +830,7 @@ export const postJson = async (
       );
     }
 
-    return JSON.parse(text);
+    return JSON.parse(responseText);
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(`MyGo API timeout after ${REQUEST_TIMEOUT_MS}ms`);
@@ -854,6 +854,10 @@ const parseJsonBoolean = (value: unknown): boolean => {
     return normalized === "true" || normalized === "1";
   }
   return false;
+};
+
+const normalizeJsonNumber = (value: number | undefined): number | undefined => {
+  return typeof value === "number" && !Number.isNaN(value) ? value : undefined;
 };
 
 // High-level API methods
@@ -904,7 +908,7 @@ export const listHotels = async (
     const name = hotel.Name ? String(hotel.Name) : "";
     const cityIdValue = Number(hotel.CityId);
     // Fall back to the requested cityId when MyGo omits, nulls, or zeros the CityId field.
-    const resolvedCityId = Number.isFinite(cityIdValue) && cityIdValue !== 0
+    const resolvedCityId = Number.isFinite(cityIdValue) && cityIdValue > 0
       ? cityIdValue
       : cityId;
 
@@ -969,9 +973,7 @@ export const searchHotels = async (
         : typeof priceValue === "string" && priceValue.trim().length > 0
         ? Number(priceValue)
         : undefined;
-      const normalizedPrice = typeof price === "number" && !Number.isNaN(price)
-        ? price
-        : undefined;
+      const normalizedPrice = normalizeJsonNumber(price);
       const roomResult: MyGoRoomResult = {
         onRequest,
         price: normalizedPrice,
@@ -1027,12 +1029,8 @@ export const createBooking = async (
   const totalPriceValue = bookingData.TotalPrice;
   const totalPrice = totalPriceValue != null ? Number(totalPriceValue) : undefined;
 
-  const normalizedBookingId = typeof bookingId === "number" && !Number.isNaN(bookingId)
-    ? bookingId
-    : undefined;
-  const normalizedTotalPrice = typeof totalPrice === "number" && !Number.isNaN(totalPrice)
-    ? totalPrice
-    : undefined;
+  const normalizedBookingId = normalizeJsonNumber(bookingId);
+  const normalizedTotalPrice = normalizeJsonNumber(totalPrice);
   const response: MyGoBookingResponse = {
     bookingId: normalizedBookingId,
     state,
