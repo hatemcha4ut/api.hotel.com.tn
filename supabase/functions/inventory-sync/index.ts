@@ -7,8 +7,11 @@ import { createSupplierClient } from "../_shared/suppliers/currentSupplierAdapte
 import {
   buildListCityXml,
   createBooking,
+  listCities,
+  listHotels,
   searchHotels,
   type MyGoBookingParams,
+  type MyGoCity,
   type MyGoCredential,
   type MyGoSearchParams,
 } from "../_shared/lib/mygoClient.ts";
@@ -334,9 +337,49 @@ serve(async (request) => {
           200,
         );
       }
+      case "mygo_selftest": {
+        const credential = getMyGoCredential();
+        const cities = await listCities(credential);
+        const normalizeName = (value: unknown) =>
+          typeof value === "string" ? value.trim().toLowerCase() : "";
+        const isTunisianCity = (city: MyGoCity) => {
+          const record = city as Record<string, unknown>;
+          const country = record.country;
+          const countryRecord = country && typeof country === "object"
+            ? (country as Record<string, unknown>)
+            : null;
+          const countryName = countryRecord?.Name ?? countryRecord?.name;
+          if (normalizeName(countryName) === "tunisie") {
+            return true;
+          }
+          return normalizeName(city.region) === "tunisie";
+        };
+        const tunisianCity = cities.find(isTunisianCity);
+        const selectedCity = tunisianCity ?? cities[0];
+
+        if (!selectedCity) {
+          throw new Error("MyGo ListCity returned no cities");
+        }
+
+        const hotels = await listHotels(credential, selectedCity.id);
+        return jsonResponse(
+          {
+            success: true,
+            action: "mygo_selftest",
+            loginLength: credential.login.length,
+            city: {
+              id: selectedCity.id,
+              name: selectedCity.name,
+            },
+            cityCount: cities.length,
+            hotelCount: hotels.length,
+          },
+          200,
+        );
+      }
       default:
         throw new ValidationError(
-          `Unknown action: ${action}. Valid actions: cities, hotels, search, booking, mygo_diagnose`,
+          `Unknown action: ${action}. Valid actions: cities, hotels, search, booking, mygo_diagnose, mygo_selftest`,
         );
     }
   } catch (error) {
