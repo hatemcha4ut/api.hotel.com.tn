@@ -968,9 +968,12 @@ export const searchHotels = async (
         : typeof priceValue === "string" && priceValue.trim().length > 0
         ? Number(priceValue)
         : undefined;
+      const normalizedPrice = typeof price === "number" && !Number.isNaN(price)
+        ? price
+        : undefined;
       const roomResult: MyGoRoomResult = {
         onRequest,
-        price: Number.isNaN(price as number) ? undefined : price,
+        price: normalizedPrice,
       };
 
       Object.entries(roomData).forEach(([key, value]) => {
@@ -1023,10 +1026,16 @@ export const createBooking = async (
   const totalPriceValue = bookingData.TotalPrice;
   const totalPrice = totalPriceValue != null ? Number(totalPriceValue) : undefined;
 
+  const normalizedBookingId = typeof bookingId === "number" && !Number.isNaN(bookingId)
+    ? bookingId
+    : undefined;
+  const normalizedTotalPrice = typeof totalPrice === "number" && !Number.isNaN(totalPrice)
+    ? totalPrice
+    : undefined;
   const response: MyGoBookingResponse = {
-    bookingId: Number.isNaN(bookingId as number) ? undefined : bookingId,
+    bookingId: normalizedBookingId,
     state,
-    totalPrice: Number.isNaN(totalPrice as number) ? undefined : totalPrice,
+    totalPrice: normalizedTotalPrice,
   };
 
   Object.entries(bookingData).forEach(([key, value]) => {
