@@ -26,7 +26,7 @@ const WHATSAPP_PHONE = "21651613888";
 /**
  * Build French message for WhatsApp based on provided booking parameters
  */
-const buildWhatsAppMessage = (
+export const buildWhatsAppMessage = (
   bookingId?: string,
   hotelName?: string,
   checkIn?: string,
