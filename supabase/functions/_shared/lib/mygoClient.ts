@@ -819,6 +819,7 @@ export const listHotels = async (
     },
     CityId: cityId,
   };
+  // Errors bubble up to callers for centralized handling.
   const data = await postJson("ListHotel", payload);
   const listHotel = Array.isArray((data as { ListHotel?: unknown }).ListHotel)
     ? (data as { ListHotel: Array<Record<string, unknown>> }).ListHotel
@@ -885,6 +886,7 @@ export const searchHotels = async (
     Rooms: roomsPayload,
   };
 
+  // Errors bubble up to callers for centralized handling.
   const data = await postJson("HotelSearch", payload);
   const response = data as Record<string, unknown>;
   const responsePayload = typeof response.HotelSearch === "object" && response.HotelSearch
@@ -991,6 +993,7 @@ export const createBooking = async (
       RoomId: selection.roomId,
     })),
   };
+  // BookingCreation is non-idempotent; postJson performs a single request and propagates errors.
   const data = await postJson("BookingCreation", payload);
   const response = data as Record<string, unknown>;
   const responsePayload = typeof response.BookingCreation === "object" && response.BookingCreation
