@@ -824,7 +824,7 @@ export const postJson = async (
       throw new Error(`MyGo error ${response.status}: ${text.slice(0, 400)}`);
     }
 
-    if (!contentType.includes("application/json")) {
+    if (!contentType.toLowerCase().includes("application/json")) {
       throw new Error(
         `Unexpected MyGo response type for ${serviceName}: ${contentType}`,
       );
@@ -970,7 +970,7 @@ export const searchHotels = async (
         : undefined;
       const roomResult: MyGoRoomResult = {
         onRequest,
-        price: typeof price === "number" && Number.isNaN(price) ? undefined : price,
+        price: Number.isNaN(price as number) ? undefined : price,
       };
 
       Object.entries(roomData).forEach(([key, value]) => {
@@ -1024,9 +1024,9 @@ export const createBooking = async (
   const totalPrice = totalPriceValue != null ? Number(totalPriceValue) : undefined;
 
   const response: MyGoBookingResponse = {
-    bookingId: typeof bookingId === "number" && Number.isNaN(bookingId) ? undefined : bookingId,
+    bookingId: Number.isNaN(bookingId as number) ? undefined : bookingId,
     state,
-    totalPrice: typeof totalPrice === "number" && Number.isNaN(totalPrice) ? undefined : totalPrice,
+    totalPrice: Number.isNaN(totalPrice as number) ? undefined : totalPrice,
   };
 
   Object.entries(bookingData).forEach(([key, value]) => {
