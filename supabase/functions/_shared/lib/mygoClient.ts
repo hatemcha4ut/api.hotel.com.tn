@@ -242,7 +242,7 @@ const buildRequestPayload = <T extends Record<string, unknown>>(
   credential: MyGoCredential,
   params: T,
 ): MyGoCredentialPayload & T => {
-  const { Credential: _ignored, ...rest } = params as Record<string, unknown>;
+  const { Credential: _credential, ...rest } = params as Record<string, unknown>;
   return {
     ...buildCredentialPayload(credential),
     ...(rest as T),
@@ -1011,7 +1011,7 @@ const extractListResponse = (
     : null;
 
   if (!list || list.length === 0) {
-    throw new Error(`No ${listKey} elements found in ${listKey} response`);
+    throw new Error(`No elements found in ${listKey} response`);
   }
 
   return list;
