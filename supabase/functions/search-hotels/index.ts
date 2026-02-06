@@ -163,9 +163,11 @@ serve(async (request) => {
     // Call MyGo API
     const credential = getMyGoCredential();
     const searchResult = await searchHotels(credential, mygoParams);
+    console.log("[MyGo search] raw hotels:", searchResult.hotels.length);
 
     // Filter out non-bookable hotels
     const bookableHotels = filterBookableHotels(searchResult.hotels);
+    console.log("[MyGo search] bookable hotels:", bookableHotels.length);
 
     // BREAKING CHANGE: Do NOT return token to client
     // Token is kept server-side only for booking creation
