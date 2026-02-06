@@ -281,10 +281,8 @@ serve(async (request) => {
         if (body.cityId !== undefined && typeof body.cityId !== "number") {
           throw new ValidationError("cityId must be a number");
         }
-        const result = await syncHotels(
-          supabase,
-          typeof body.cityId === "number" ? body.cityId : undefined,
-        );
+        const cityId = body.cityId as number | undefined;
+        const result = await syncHotels(supabase, cityId);
         return jsonResponse(
           {
             success: true,
