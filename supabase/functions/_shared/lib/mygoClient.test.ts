@@ -7,14 +7,20 @@
  * - Invalid XML responses (HTML errors, etc.)
  */
 
-import { assertEquals, assertRejects, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assert, assertEquals, assertRejects, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  buildBookingCreationPayload,
   buildListCityPayload,
+  buildListHotelPayload,
+  buildHotelSearchPayload,
+  createBooking,
   listCities,
+  listHotels,
   parseListCityResponse,
   parseListHotelResponse,
   parseHotelSearchResponse,
   parseBookingCreationResponse,
+  searchHotels,
 } from "./mygoClient.ts";
 
 // Test 1: Parse valid XML with UTF-8 BOM
@@ -237,6 +243,192 @@ Deno.test("listCities should reject missing ListCity array", async () => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+Deno.test("listHotels should map JSON ListHotel response", async () => {
+  const originalFetch = globalThis.fetch;
+  let receivedBody = "";
+
+  globalThis.fetch = async (_input, init) => {
+    receivedBody = String(init?.body ?? "");
+    return new Response(
+      JSON.stringify({
+        ListHotel: [
+          {
+            Id: 10,
+            Name: "Hotel Example",
+            CityId: 5,
+            Star: 4,
+            CategoryTitle: "Deluxe",
+            Address: "Main Street",
+            Longitude: "10.1",
+            Latitude: "11.2",
+            Image: "image.png",
+            Note: "note",
+          },
+        ],
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      },
+    );
+  };
+
+  try {
+    const hotels = await listHotels({ login: "user", password: "pass" }, 5);
+    assertEquals(hotels, [
+      {
+        id: 10,
+        name: "Hotel Example",
+        cityId: 5,
+        star: "4",
+        categoryTitle: "Deluxe",
+        address: "Main Street",
+        longitude: "10.1",
+        latitude: "11.2",
+        image: "image.png",
+        note: "note",
+      },
+    ]);
+    assertEquals(
+      JSON.parse(receivedBody),
+      buildListHotelPayload({ login: "user", password: "pass" }, 5),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("searchHotels should map JSON HotelSearch response", async () => {
+  const originalFetch = globalThis.fetch;
+  let receivedBody = "";
+
+  globalThis.fetch = async (_input, init) => {
+    receivedBody = String(init?.body ?? "");
+    return new Response(
+      JSON.stringify({
+        Token: "token-123",
+        Hotels: [
+          {
+            Id: 101,
+            Name: "Hotel Test",
+            Available: true,
+            ExtraField: "value",
+            Rooms: [
+              { OnRequest: false, Price: 120.5, RoomId: 22 },
+            ],
+          },
+        ],
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      },
+    );
+  };
+
+  const params = {
+    cityId: 1,
+    checkIn: "2025-01-10",
+    checkOut: "2025-01-12",
+    rooms: [{ adults: 2, childrenAges: [5] }],
+    currency: "TND" as const,
+    onlyAvailable: true,
+  };
+
+  try {
+    const result = await searchHotels({ login: "user", password: "pass" }, params);
+    assertEquals(result.token, "token-123");
+    assertEquals(result.hotels.length, 1);
+    assertEquals(result.hotels[0].rooms[0].onRequest, false);
+    assertEquals(result.hotels[0].rooms[0].price, 120.5);
+    assertEquals(result.hotels[0].rooms[0].RoomId, 22);
+    assertEquals(result.hotels[0].ExtraField, "value");
+    assertEquals(
+      JSON.parse(receivedBody),
+      buildHotelSearchPayload({ login: "user", password: "pass" }, params),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("createBooking should map JSON BookingCreation response", async () => {
+  const originalFetch = globalThis.fetch;
+  let receivedBody = "";
+
+  globalThis.fetch = async (_input, init) => {
+    receivedBody = String(init?.body ?? "");
+    return new Response(
+      JSON.stringify({
+        BookingId: "456",
+        State: "confirmed",
+        TotalPrice: "540.75",
+        Extra: "value",
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      },
+    );
+  };
+
+  const params = {
+    token: "token-123",
+    preBooking: true,
+    customerName: "Guest",
+    customerEmail: "guest@example.com",
+    customerPhone: "12345678",
+    roomSelections: [{ hotelId: 1, roomId: 2 }],
+  };
+
+  try {
+    const result = await createBooking({ login: "user", password: "pass" }, params);
+    assertEquals(result.bookingId, 456);
+    assertEquals(result.state, "confirmed");
+    assertEquals(result.totalPrice, 540.75);
+    assertEquals(result.Extra, "value");
+    assertEquals(
+      JSON.parse(receivedBody),
+      buildBookingCreationPayload({ login: "user", password: "pass" }, params),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+const integrationLogin = Deno.env.get("MYGO_LOGIN");
+const integrationPassword = Deno.env.get("MYGO_PASSWORD");
+const integrationCityId = Number(Deno.env.get("MYGO_TEST_CITY_ID") ?? "");
+const hasIntegrationCredentials = Boolean(integrationLogin && integrationPassword);
+const hasIntegrationCity = Number.isFinite(integrationCityId) && integrationCityId > 0;
+
+Deno.test({
+  name: "MyGo integration: listCities returns at least one city",
+  ignore: !hasIntegrationCredentials,
+  fn: async () => {
+    const cities = await listCities({
+      login: integrationLogin as string,
+      password: integrationPassword as string,
+    });
+    assert(cities.length > 0);
+  },
+});
+
+Deno.test({
+  name: "MyGo integration: listHotels returns at least one hotel",
+  ignore: !hasIntegrationCredentials || !hasIntegrationCity,
+  fn: async () => {
+    const hotels = await listHotels(
+      {
+        login: integrationLogin as string,
+        password: integrationPassword as string,
+      },
+      integrationCityId,
+    );
+    assert(hotels.length > 0);
+  },
 });
 
 console.log("✅ All MyGo Client tests passed");

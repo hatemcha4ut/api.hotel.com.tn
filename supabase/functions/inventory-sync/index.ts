@@ -4,7 +4,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { jsonResponse } from "../_shared/cors.ts";
 import { formatError, ValidationError } from "../_shared/errors.ts";
 import { createSupplierClient } from "../_shared/suppliers/currentSupplierAdapter.ts";
-import { buildListCityXml } from "../_shared/lib/mygoClient.ts";
+import {
+  buildListCityXml,
+  createBooking,
+  searchHotels,
+  type MyGoBookingParams,
+  type MyGoCredential,
+  type MyGoSearchParams,
+} from "../_shared/lib/mygoClient.ts";
 
 const syncCities = async (
   supabase: ReturnType<typeof createClient>,
@@ -38,9 +45,12 @@ const syncCities = async (
 
 const syncHotels = async (
   supabase: ReturnType<typeof createClient>,
+  cityId?: number,
 ) => {
   const supplierClient = createSupplierClient();
-  const cities = await supplierClient.fetchCities();
+  const cities = typeof cityId === "number"
+    ? [{ id: cityId }]
+    : await supplierClient.fetchCities();
 
   if (!cities || cities.length === 0) {
     return { processed: 0 };
@@ -87,6 +97,19 @@ const syncHotels = async (
   return {
     processed: hotelsData.length,
   };
+};
+
+const getMyGoCredential = (): MyGoCredential => {
+  const login = (Deno.env.get("MYGO_LOGIN") ?? "").trim();
+  const password = (Deno.env.get("MYGO_PASSWORD") ?? "").trim();
+
+  if (!login || !password) {
+    throw new Error(
+      "MYGO_LOGIN and/or MYGO_PASSWORD environment variables are not set. Please configure these in Supabase Edge Function secrets.",
+    );
+  }
+
+  return { login, password };
 };
 
 /**
@@ -255,11 +278,46 @@ serve(async (request) => {
         );
       }
       case "hotels": {
-        const result = await syncHotels(supabase);
+        if (body.cityId !== undefined && typeof body.cityId !== "number") {
+          throw new ValidationError("cityId must be a number");
+        }
+        const cityId = body.cityId as number | undefined;
+        const result = await syncHotels(supabase, cityId);
         return jsonResponse(
           {
             success: true,
             action: "hotels",
+            ...result,
+          },
+          200,
+        );
+      }
+      case "search": {
+        if (!body.params || typeof body.params !== "object") {
+          throw new ValidationError("params is required for search");
+        }
+        const params = body.params as MyGoSearchParams;
+        const result = await searchHotels(getMyGoCredential(), params);
+        return jsonResponse(
+          {
+            success: true,
+            action: "search",
+            processed: result.hotels.length,
+            ...result,
+          },
+          200,
+        );
+      }
+      case "booking": {
+        if (!body.params || typeof body.params !== "object") {
+          throw new ValidationError("params is required for booking");
+        }
+        const params = body.params as MyGoBookingParams;
+        const result = await createBooking(getMyGoCredential(), params);
+        return jsonResponse(
+          {
+            success: true,
+            action: "booking",
             ...result,
           },
           200,
@@ -278,7 +336,7 @@ serve(async (request) => {
       }
       default:
         throw new ValidationError(
-          `Unknown action: ${action}. Valid actions: cities, hotels, mygo_diagnose`,
+          `Unknown action: ${action}. Valid actions: cities, hotels, search, booking, mygo_diagnose`,
         );
     }
   } catch (error) {
