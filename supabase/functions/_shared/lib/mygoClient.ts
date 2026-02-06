@@ -989,15 +989,15 @@ export const searchHotels = async (
     const idValue = hotel.Id;
     const id = typeof idValue === "number" ? idValue : Number(idValue);
     const name = typeof hotel.Name === "string" ? hotel.Name : "";
-    if (!Number.isFinite(id) || !name) {
+    if (!Number.isFinite(id) || id === 0 || !name) {
       return;
     }
 
     const roomsJson = Array.isArray(hotel.Rooms) ? hotel.Rooms : [];
     const rooms: MyGoRoomResult[] = roomsJson.map((room) => ({
+      ...room,
       onRequest: room.OnRequest === true,
       price: room.Price ?? undefined,
-      ...room,
     }));
 
     const hotelResult: MyGoHotelSearchResult = {
