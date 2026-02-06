@@ -11,6 +11,7 @@ import {
   listHotels,
   searchHotels,
   type MyGoBookingParams,
+  type MyGoCity,
   type MyGoCredential,
   type MyGoSearchParams,
 } from "../_shared/lib/mygoClient.ts";
@@ -341,7 +342,7 @@ serve(async (request) => {
         const cities = await listCities(credential);
         const normalizeName = (value: unknown) =>
           typeof value === "string" ? value.trim().toLowerCase() : "";
-        const tunisianCity = cities.find((city) => {
+        const isTunisianCity = (city: MyGoCity) => {
           const record = city as Record<string, unknown>;
           const country = record.country;
           const countryRecord = country && typeof country === "object"
@@ -352,21 +353,23 @@ serve(async (request) => {
             return true;
           }
           return normalizeName(city.region) === "tunisie";
-        }) ?? cities[0];
+        };
+        const tunisianCity = cities.find(isTunisianCity);
+        const selectedCity = tunisianCity ?? cities[0];
 
-        if (!tunisianCity) {
+        if (!selectedCity) {
           throw new Error("MyGo ListCity returned no cities");
         }
 
-        const hotels = await listHotels(credential, tunisianCity.id);
+        const hotels = await listHotels(credential, selectedCity.id);
         return jsonResponse(
           {
             success: true,
             action: "mygo_selftest",
             loginLength: credential.login.length,
             city: {
-              id: tunisianCity.id,
-              name: tunisianCity.name,
+              id: selectedCity.id,
+              name: selectedCity.name,
             },
             cityCount: cities.length,
             hotelCount: hotels.length,
