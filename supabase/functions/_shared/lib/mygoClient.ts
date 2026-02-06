@@ -296,6 +296,18 @@ export const buildListCityXml = (credential: MyGoCredential): string => {
 </Root>`;
 };
 
+// Build JSON payload for ListCity
+export const buildListCityPayload = (credential: MyGoCredential): {
+  Credential: { Login: string; Password: string };
+} => {
+  return {
+    Credential: {
+      Login: credential.login,
+      Password: credential.password,
+    },
+  };
+};
+
 // Build XML for ListHotel
 export const buildListHotelXml = (
   credential: MyGoCredential,
@@ -446,7 +458,7 @@ export const parseListCityResponse = (xmlString: string): MyGoCity[] => {
     const name = getElementText(cityEl, "Name");
     const region = getElementText(cityEl, "Region");
     
-    if (id && name) {
+    if (Number.isFinite(id) && name) {
       cities.push({
         id,
         name,
@@ -708,11 +720,82 @@ export const postXml = async (
   throw lastError ?? new Error("MyGo API request failed");
 };
 
+// POST JSON to MyGo API
+export const postJson = async (
+  serviceName: string,
+  payload: unknown,
+): Promise<unknown> => {
+  const url = `${MYGO_BASE_URL}/${serviceName}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    const responseText = await response.text();
+    const contentType = response.headers.get("content-type") || "";
+
+    if (!response.ok) {
+      const preview = responseText.slice(0, 400);
+      throw new Error(
+        `MyGo API error: ${response.status} ${response.statusText}. Response preview: ${preview}`
+      );
+    }
+
+    if (!contentType.toLowerCase().includes("application/json")) {
+      const preview = responseText.slice(0, 400);
+      throw new Error(
+        `MyGo returned non-JSON response for ${serviceName}: ${preview}`
+      );
+    }
+
+    return JSON.parse(responseText);
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`MyGo API timeout after ${REQUEST_TIMEOUT_MS}ms`);
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
 // High-level API methods
 export const listCities = async (credential: MyGoCredential): Promise<MyGoCity[]> => {
-  const xml = buildListCityXml(credential);
-  const responseXml = await postXml("ListCity", xml, { idempotent: true });
-  return parseListCityResponse(responseXml);
+  const data = await postJson("ListCity", buildListCityPayload(credential));
+  const listCity = Array.isArray((data as { ListCity?: unknown }).ListCity)
+    ? (data as { ListCity: Array<Record<string, unknown>> }).ListCity
+    : null;
+
+  if (!listCity || listCity.length === 0) {
+    throw new Error("No ListCity elements found in ListCity response");
+  }
+
+  const cities: MyGoCity[] = [];
+  listCity.forEach((city) => {
+    const id = Number(city.Id);
+    const name = city.Name ? String(city.Name) : "";
+    const region = city.Region ? String(city.Region) : undefined;
+
+    if (Number.isFinite(id) && name) {
+      cities.push({
+        id,
+        name,
+        region,
+      });
+    }
+  });
+
+  return cities;
 };
 
 export const listHotels = async (

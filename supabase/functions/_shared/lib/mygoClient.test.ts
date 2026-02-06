@@ -7,8 +7,10 @@
  * - Invalid XML responses (HTML errors, etc.)
  */
 
-import { assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertRejects, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  buildListCityPayload,
+  listCities,
   parseListCityResponse,
   parseListHotelResponse,
   parseHotelSearchResponse,
@@ -171,4 +173,70 @@ Deno.test("parseListCityResponse should handle Root-wrapped response", () => {
   assertEquals(cities[1].name, "Sousse");
 });
 
-console.log("✅ All MyGo Client XML parsing tests passed");
+Deno.test("buildListCityPayload should format credentials for JSON", () => {
+  const payload = buildListCityPayload({ login: "user", password: "pass" });
+  assertEquals(payload, {
+    Credential: {
+      Login: "user",
+      Password: "pass",
+    },
+  });
+});
+
+Deno.test("listCities should map JSON ListCity response", async () => {
+  const originalFetch = globalThis.fetch;
+  let receivedBody = "";
+
+  globalThis.fetch = async (_input, init) => {
+    receivedBody = String(init?.body ?? "");
+    return new Response(
+      JSON.stringify({
+        ListCity: [
+          { Id: 1, Name: "Tunis", Region: "Nord" },
+          { Id: "2", Name: "Sousse" },
+        ],
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      },
+    );
+  };
+
+  try {
+    const cities = await listCities({ login: "user", password: "pass" });
+    assertEquals(cities, [
+      { id: 1, name: "Tunis", region: "Nord" },
+      { id: 2, name: "Sousse", region: undefined },
+    ]);
+    assertEquals(JSON.parse(receivedBody), buildListCityPayload({ login: "user", password: "pass" }));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("listCities should reject missing ListCity array", async () => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () => {
+    return new Response(
+      JSON.stringify({ error: "missing" }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      },
+    );
+  };
+
+  try {
+    await assertRejects(
+      () => listCities({ login: "user", password: "pass" }),
+      Error,
+      "No ListCity elements found in ListCity response",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+console.log("✅ All MyGo Client tests passed");
