@@ -857,7 +857,7 @@ const parseJsonBoolean = (value: unknown): boolean => {
 };
 
 const normalizeJsonNumber = (value: number | undefined): number | undefined => {
-  return typeof value === "number" && !Number.isNaN(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 };
 
 // High-level API methods
@@ -907,7 +907,7 @@ export const listHotels = async (
     const id = Number(hotel.Id);
     const name = hotel.Name ? String(hotel.Name) : "";
     const cityIdValue = Number(hotel.CityId);
-    // Fall back to the requested cityId when MyGo omits, nulls, or zeros the CityId field.
+    // Fall back to the requested cityId when MyGo omits, returns null, or zeros the CityId field.
     const resolvedCityId = Number.isFinite(cityIdValue) && cityIdValue > 0
       ? cityIdValue
       : cityId;
