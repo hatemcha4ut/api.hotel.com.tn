@@ -974,8 +974,8 @@ export const searchHotels = async (
     );
   }
 
-  const searchId = (data as { SearchId?: unknown }).SearchId as string | undefined;
-  if (!searchId) {
+  const searchId = (data as { SearchId?: unknown }).SearchId;
+  if (typeof searchId !== "string" || !searchId) {
     throw new Error("MyGo HotelSearch response missing SearchId");
   }
 
@@ -983,7 +983,16 @@ export const searchHotels = async (
     ? ((data as { HotelSearch: MyGoHotelSearchJson[] }).HotelSearch)
     : [];
 
-  const hotels: MyGoHotelSearchResult[] = hotelsJson.map((hotel) => {
+  const hotels: MyGoHotelSearchResult[] = [];
+
+  hotelsJson.forEach((hotel) => {
+    const idValue = hotel.Id;
+    const id = typeof idValue === "number" ? idValue : Number(idValue);
+    const name = typeof hotel.Name === "string" ? hotel.Name : "";
+    if (!Number.isFinite(id) || !name) {
+      return;
+    }
+
     const roomsJson = Array.isArray(hotel.Rooms) ? hotel.Rooms : [];
     const rooms: MyGoRoomResult[] = roomsJson.map((room) => ({
       onRequest: room.OnRequest === true,
@@ -992,8 +1001,8 @@ export const searchHotels = async (
     }));
 
     const hotelResult: MyGoHotelSearchResult = {
-      id: hotel.Id as number,
-      name: hotel.Name as string,
+      id,
+      name,
       available: hotel.Available === true,
       rooms,
     };
@@ -1004,7 +1013,7 @@ export const searchHotels = async (
       }
     });
 
-    return hotelResult;
+    hotels.push(hotelResult);
   });
 
   return { token: searchId, hotels };
