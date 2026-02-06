@@ -349,6 +349,7 @@ export interface MyGoBookingResponse {
   [key: string]: unknown;
 }
 
+// Raw JSON payloads sent to/returned from MyGo JSON endpoints.
 export type MyGoJsonRequest = Record<string, unknown>;
 export type MyGoJsonResponse = Record<string, unknown>;
 
@@ -1080,7 +1081,7 @@ export const listCurrencies = async (
 export const creditCheck = async (
   credential: MyGoCredential,
 ): Promise<MyGoJsonResponse> => {
-  return await myGoPostJson(
+  return myGoPostJson(
     "CreditCheck",
     buildCreditCheckPayload(credential),
   );
@@ -1090,7 +1091,7 @@ export const hotelDetail = async (
   credential: MyGoCredential,
   params: MyGoJsonRequest,
 ): Promise<MyGoJsonResponse> => {
-  return await myGoPostJson(
+  return myGoPostJson(
     "HotelDetail",
     buildHotelDetailPayload(credential, params),
   );
@@ -1100,7 +1101,7 @@ export const hotelCancellationPolicy = async (
   credential: MyGoCredential,
   params: MyGoJsonRequest,
 ): Promise<MyGoJsonResponse> => {
-  return await myGoPostJson(
+  return myGoPostJson(
     "HotelCancellationPolicy",
     buildHotelCancellationPolicyPayload(credential, params),
   );
@@ -1110,7 +1111,7 @@ export const bookingCancellation = async (
   credential: MyGoCredential,
   params: MyGoJsonRequest,
 ): Promise<MyGoJsonResponse> => {
-  return await myGoPostJson(
+  return myGoPostJson(
     "BookingCancellation",
     buildBookingCancellationPayload(credential, params),
   );
@@ -1120,7 +1121,7 @@ export const bookingList = async (
   credential: MyGoCredential,
   params: MyGoJsonRequest,
 ): Promise<MyGoJsonResponse> => {
-  return await myGoPostJson(
+  return myGoPostJson(
     "BookingList",
     buildBookingListPayload(credential, params),
   );
@@ -1130,7 +1131,7 @@ export const bookingDetails = async (
   credential: MyGoCredential,
   params: MyGoJsonRequest,
 ): Promise<MyGoJsonResponse> => {
-  return await myGoPostJson(
+  return myGoPostJson(
     "BookingDetails",
     buildBookingDetailsPayload(credential, params),
   );
