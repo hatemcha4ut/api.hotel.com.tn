@@ -964,7 +964,16 @@ export const searchHotels = async (
   credential: MyGoCredential,
   params: MyGoSearchParams,
 ): Promise<MyGoSearchResponse> => {
-  const data = await postJson("HotelSearch", buildHotelSearchPayload(credential, params));
+  const payload = buildHotelSearchPayload(credential, params);
+  const safePayload = {
+    ...payload,
+    Credential: {
+      ...payload.Credential,
+      Password: "***",
+    },
+  };
+  console.log("[MyGo HotelSearch] request payload:", JSON.stringify(safePayload).slice(0, 400));
+  const data = await postJson("HotelSearch", payload);
 
   const errorMessage = (data as { ErrorMessage?: { Code?: unknown; Description?: unknown } })
     .ErrorMessage;
