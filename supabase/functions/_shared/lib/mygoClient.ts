@@ -214,6 +214,41 @@ export interface MyGoCredential {
   password: string;
 }
 
+type MyGoCredentialPayload = {
+  Credential: { Login: string; Password: string };
+};
+
+export const getMyGoCredential = (): MyGoCredential => {
+  const login = Deno.env.get("MYGO_LOGIN");
+  const password = Deno.env.get("MYGO_PASSWORD");
+  if (!login || !password) {
+    throw new Error("Missing MYGO_LOGIN or MYGO_PASSWORD env variables");
+  }
+  return { login, password };
+};
+
+const buildCredentialPayload = (
+  credential: MyGoCredential,
+): MyGoCredentialPayload => {
+  return {
+    Credential: {
+      Login: credential.login,
+      Password: credential.password,
+    },
+  };
+};
+
+const buildRequestPayload = <T extends Record<string, unknown>>(
+  credential: MyGoCredential,
+  params: T,
+): MyGoCredentialPayload & T => {
+  const { Credential: _ignored, ...rest } = params as Record<string, unknown>;
+  return {
+    ...buildCredentialPayload(credential),
+    ...(rest as T),
+  };
+};
+
 export interface MyGoCity {
   id: number;
   name: string;
@@ -310,6 +345,9 @@ export interface MyGoBookingResponse {
   totalPrice?: number;
   [key: string]: unknown;
 }
+
+export type MyGoJsonRequest = Record<string, unknown>;
+export type MyGoJsonResponse = Record<string, unknown>;
 
 // Build XML for ListCity
 export const buildListCityXml = (credential: MyGoCredential): string => {
@@ -512,6 +550,59 @@ export const buildBookingCreationPayload = (
     })),
   };
 };
+
+export const buildListCountryPayload = (
+  credential: MyGoCredential,
+): MyGoCredentialPayload => buildCredentialPayload(credential);
+
+export const buildListCategoriePayload = (
+  credential: MyGoCredential,
+): MyGoCredentialPayload => buildCredentialPayload(credential);
+
+export const buildListBoardingPayload = (
+  credential: MyGoCredential,
+): MyGoCredentialPayload => buildCredentialPayload(credential);
+
+export const buildListTagPayload = (
+  credential: MyGoCredential,
+): MyGoCredentialPayload => buildCredentialPayload(credential);
+
+export const buildListLanguagePayload = (
+  credential: MyGoCredential,
+): MyGoCredentialPayload => buildCredentialPayload(credential);
+
+export const buildListCurrencyPayload = (
+  credential: MyGoCredential,
+): MyGoCredentialPayload => buildCredentialPayload(credential);
+
+export const buildCreditCheckPayload = (
+  credential: MyGoCredential,
+): MyGoCredentialPayload => buildCredentialPayload(credential);
+
+export const buildHotelDetailPayload = (
+  credential: MyGoCredential,
+  params: MyGoJsonRequest,
+): MyGoCredentialPayload & MyGoJsonRequest => buildRequestPayload(credential, params);
+
+export const buildHotelCancellationPolicyPayload = (
+  credential: MyGoCredential,
+  params: MyGoJsonRequest,
+): MyGoCredentialPayload & MyGoJsonRequest => buildRequestPayload(credential, params);
+
+export const buildBookingCancellationPayload = (
+  credential: MyGoCredential,
+  params: MyGoJsonRequest,
+): MyGoCredentialPayload & MyGoJsonRequest => buildRequestPayload(credential, params);
+
+export const buildBookingListPayload = (
+  credential: MyGoCredential,
+  params: MyGoJsonRequest,
+): MyGoCredentialPayload & MyGoJsonRequest => buildRequestPayload(credential, params);
+
+export const buildBookingDetailsPayload = (
+  credential: MyGoCredential,
+  params: MyGoJsonRequest,
+): MyGoCredentialPayload & MyGoJsonRequest => buildRequestPayload(credential, params);
 
 // Parse XML to object
 const parseXmlToObject = (xmlString: string): any => {
@@ -885,6 +976,13 @@ export const postJson = async (
   }
 };
 
+export const myGoPostJson = async <T = MyGoJsonResponse>(
+  serviceName: string,
+  payload: unknown,
+): Promise<T> => {
+  return (await postJson(serviceName, payload)) as T;
+};
+
 const parseJsonBoolean = (value: unknown): boolean => {
   if (typeof value === "boolean") {
     return value;
@@ -904,6 +1002,137 @@ const normalizeJsonNumber = (value: number | undefined): number | undefined => {
 };
 
 // High-level API methods
+const extractListResponse = (
+  data: unknown,
+  listKey: string,
+): MyGoJsonResponse[] => {
+  const list = Array.isArray((data as Record<string, unknown>)[listKey])
+    ? ((data as Record<string, MyGoJsonResponse[]>)[listKey])
+    : null;
+
+  if (!list || list.length === 0) {
+    throw new Error(`No ${listKey} elements found in ${listKey} response`);
+  }
+
+  return list;
+};
+
+export const listCountries = async (
+  credential: MyGoCredential,
+): Promise<MyGoJsonResponse[]> => {
+  const data = await myGoPostJson(
+    "ListCountry",
+    buildListCountryPayload(credential),
+  );
+  return extractListResponse(data, "ListCountry");
+};
+
+export const listCategories = async (
+  credential: MyGoCredential,
+): Promise<MyGoJsonResponse[]> => {
+  const data = await myGoPostJson(
+    "ListCategorie",
+    buildListCategoriePayload(credential),
+  );
+  return extractListResponse(data, "ListCategorie");
+};
+
+export const listBoardings = async (
+  credential: MyGoCredential,
+): Promise<MyGoJsonResponse[]> => {
+  const data = await myGoPostJson(
+    "ListBoarding",
+    buildListBoardingPayload(credential),
+  );
+  return extractListResponse(data, "ListBoarding");
+};
+
+export const listTags = async (
+  credential: MyGoCredential,
+): Promise<MyGoJsonResponse[]> => {
+  const data = await myGoPostJson("ListTag", buildListTagPayload(credential));
+  return extractListResponse(data, "ListTag");
+};
+
+export const listLanguages = async (
+  credential: MyGoCredential,
+): Promise<MyGoJsonResponse[]> => {
+  const data = await myGoPostJson(
+    "ListLanguage",
+    buildListLanguagePayload(credential),
+  );
+  return extractListResponse(data, "ListLanguage");
+};
+
+export const listCurrencies = async (
+  credential: MyGoCredential,
+): Promise<MyGoJsonResponse[]> => {
+  const data = await myGoPostJson(
+    "ListCurrency",
+    buildListCurrencyPayload(credential),
+  );
+  return extractListResponse(data, "ListCurrency");
+};
+
+export const creditCheck = async (
+  credential: MyGoCredential,
+): Promise<MyGoJsonResponse> => {
+  return await myGoPostJson(
+    "CreditCheck",
+    buildCreditCheckPayload(credential),
+  );
+};
+
+export const hotelDetail = async (
+  credential: MyGoCredential,
+  params: MyGoJsonRequest,
+): Promise<MyGoJsonResponse> => {
+  return await myGoPostJson(
+    "HotelDetail",
+    buildHotelDetailPayload(credential, params),
+  );
+};
+
+export const hotelCancellationPolicy = async (
+  credential: MyGoCredential,
+  params: MyGoJsonRequest,
+): Promise<MyGoJsonResponse> => {
+  return await myGoPostJson(
+    "HotelCancellationPolicy",
+    buildHotelCancellationPolicyPayload(credential, params),
+  );
+};
+
+export const bookingCancellation = async (
+  credential: MyGoCredential,
+  params: MyGoJsonRequest,
+): Promise<MyGoJsonResponse> => {
+  return await myGoPostJson(
+    "BookingCancellation",
+    buildBookingCancellationPayload(credential, params),
+  );
+};
+
+export const bookingList = async (
+  credential: MyGoCredential,
+  params: MyGoJsonRequest,
+): Promise<MyGoJsonResponse> => {
+  return await myGoPostJson(
+    "BookingList",
+    buildBookingListPayload(credential, params),
+  );
+};
+
+export const bookingDetails = async (
+  credential: MyGoCredential,
+  params: MyGoJsonRequest,
+): Promise<MyGoJsonResponse> => {
+  return await myGoPostJson(
+    "BookingDetails",
+    buildBookingDetailsPayload(credential, params),
+  );
+};
+
 export const listCities = async (credential: MyGoCredential): Promise<MyGoCity[]> => {
   const data = await postJson("ListCity", buildListCityPayload(credential));
   const listCity = Array.isArray((data as { ListCity?: unknown }).ListCity)

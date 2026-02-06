@@ -10,11 +10,15 @@
 import { assert, assertEquals, assertRejects, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   buildBookingCreationPayload,
+  buildHotelDetailPayload,
   buildListCityPayload,
+  buildListCountryPayload,
   buildListHotelPayload,
   buildHotelSearchPayload,
   createBooking,
+  hotelDetail,
   listCities,
+  listCountries,
   listHotels,
   parseListCityResponse,
   parseListHotelResponse,
@@ -245,6 +249,35 @@ Deno.test("listCities should reject missing ListCity array", async () => {
   }
 });
 
+Deno.test("listCountries should return JSON ListCountry response", async () => {
+  const originalFetch = globalThis.fetch;
+  let receivedBody = "";
+
+  globalThis.fetch = async (_input, init) => {
+    receivedBody = String(init?.body ?? "");
+    return new Response(
+      JSON.stringify({
+        ListCountry: [{ Id: 1, Name: "Tunisia" }],
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      },
+    );
+  };
+
+  try {
+    const countries = await listCountries({ login: "user", password: "pass" });
+    assertEquals(countries, [{ Id: 1, Name: "Tunisia" }]);
+    assertEquals(
+      JSON.parse(receivedBody),
+      buildListCountryPayload({ login: "user", password: "pass" }),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 Deno.test("listHotels should map JSON ListHotel response", async () => {
   const originalFetch = globalThis.fetch;
   let receivedBody = "";
@@ -294,6 +327,36 @@ Deno.test("listHotels should map JSON ListHotel response", async () => {
     assertEquals(
       JSON.parse(receivedBody),
       buildListHotelPayload({ login: "user", password: "pass" }, 5),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("hotelDetail should merge credential payload with params", async () => {
+  const originalFetch = globalThis.fetch;
+  let receivedBody = "";
+
+  globalThis.fetch = async (_input, init) => {
+    receivedBody = String(init?.body ?? "");
+    return new Response(
+      JSON.stringify({
+        Hotel: { Id: 77, Name: "Hotel Detail" },
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      },
+    );
+  };
+
+  try {
+    const params = { HotelId: 77, Language: "fr" };
+    const response = await hotelDetail({ login: "user", password: "pass" }, params);
+    assertEquals(response, { Hotel: { Id: 77, Name: "Hotel Detail" } });
+    assertEquals(
+      JSON.parse(receivedBody),
+      buildHotelDetailPayload({ login: "user", password: "pass" }, params),
     );
   } finally {
     globalThis.fetch = originalFetch;
