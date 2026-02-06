@@ -242,10 +242,13 @@ const buildRequestPayload = <T extends Record<string, unknown>>(
   credential: MyGoCredential,
   params: T,
 ): MyGoCredentialPayload & T => {
-  const { Credential: _credential, ...rest } = params as Record<string, unknown>;
+  const request = params as Record<string, unknown>;
+  if ("Credential" in request) {
+    throw new Error("MyGo request params must not include Credential");
+  }
   return {
     ...buildCredentialPayload(credential),
-    ...(rest as T),
+    ...(request as T),
   };
 };
 
@@ -1010,8 +1013,12 @@ const extractListResponse = (
     ? ((data as Record<string, MyGoJsonResponse[]>)[listKey])
     : null;
 
-  if (!list || list.length === 0) {
-    throw new Error(`No elements found in ${listKey} response`);
+  if (!list) {
+    throw new Error(`Missing ${listKey} in response`);
+  }
+
+  if (list.length === 0) {
+    throw new Error(`Empty ${listKey} array in response`);
   }
 
   return list;
