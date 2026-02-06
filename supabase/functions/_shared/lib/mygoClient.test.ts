@@ -308,8 +308,8 @@ Deno.test("searchHotels should map JSON HotelSearch response", async () => {
     receivedBody = String(init?.body ?? "");
     return new Response(
       JSON.stringify({
-        Token: "token-123",
-        Hotels: [
+        SearchId: "search-123",
+        HotelSearch: [
           {
             Id: 101,
             Name: "Hotel Test",
@@ -339,7 +339,7 @@ Deno.test("searchHotels should map JSON HotelSearch response", async () => {
 
   try {
     const result = await searchHotels({ login: "user", password: "pass" }, params);
-    assertEquals(result.token, "token-123");
+    assertEquals(result.token, "search-123");
     assertEquals(result.hotels.length, 1);
     assertEquals(result.hotels[0].rooms[0].onRequest, false);
     assertEquals(result.hotels[0].rooms[0].price, 120.5);

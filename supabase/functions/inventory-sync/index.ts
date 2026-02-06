@@ -300,7 +300,16 @@ serve(async (request) => {
           throw new ValidationError("params is required for search");
         }
         const params = body.params as MyGoSearchParams;
-        const result = await searchHotels(getMyGoCredential(), params);
+        let result: Awaited<ReturnType<typeof searchHotels>>;
+        try {
+          result = await searchHotels(getMyGoCredential(), params);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return jsonResponse(
+            { success: false, action: "search", error: message },
+            400,
+          );
+        }
         return jsonResponse(
           {
             success: true,
