@@ -262,6 +262,18 @@ export interface MyGoRoomResult {
   [key: string]: unknown;
 }
 
+type MyGoHotelSearchJson = Record<string, unknown> & {
+  Id?: number;
+  Name?: string;
+  Available?: boolean;
+  Rooms?: MyGoRoomSearchJson[];
+};
+
+type MyGoRoomSearchJson = Record<string, unknown> & {
+  OnRequest?: boolean;
+  Price?: number;
+};
+
 export interface MyGoSearchResponse {
   token: string;
   hotels: MyGoHotelSearchResult[];
@@ -968,7 +980,7 @@ export const searchHotels = async (
   }
 
   const hotelsJson = Array.isArray((data as { HotelSearch?: unknown }).HotelSearch)
-    ? ((data as { HotelSearch: any[] }).HotelSearch)
+    ? ((data as { HotelSearch: MyGoHotelSearchJson[] }).HotelSearch)
     : [];
 
   const hotels: MyGoHotelSearchResult[] = hotelsJson.map((hotel) => {
@@ -980,8 +992,8 @@ export const searchHotels = async (
     }));
 
     const hotelResult: MyGoHotelSearchResult = {
-      id: hotel.Id,
-      name: hotel.Name,
+      id: hotel.Id as number,
+      name: hotel.Name as string,
       available: hotel.Available === true,
       rooms,
     };
