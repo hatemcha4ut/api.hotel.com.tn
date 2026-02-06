@@ -186,7 +186,7 @@ Deno.test("buildListCityPayload should format credentials for JSON", () => {
 Deno.test("listCities should map JSON ListCity response", async () => {
   const originalFetch = globalThis.fetch;
   let receivedBody = "";
-  
+
   globalThis.fetch = async (_input, init) => {
     receivedBody = String(init?.body ?? "");
     return new Response(
@@ -202,7 +202,7 @@ Deno.test("listCities should map JSON ListCity response", async () => {
       },
     );
   };
-  
+
   try {
     const cities = await listCities({ login: "user", password: "pass" });
     assertEquals(cities, [
@@ -217,7 +217,7 @@ Deno.test("listCities should map JSON ListCity response", async () => {
 
 Deno.test("listCities should reject missing ListCity array", async () => {
   const originalFetch = globalThis.fetch;
-  
+
   globalThis.fetch = async () => {
     return new Response(
       JSON.stringify({ error: "missing" }),
@@ -227,7 +227,7 @@ Deno.test("listCities should reject missing ListCity array", async () => {
       },
     );
   };
-  
+
   try {
     await assertRejects(
       () => listCities({ login: "user", password: "pass" }),

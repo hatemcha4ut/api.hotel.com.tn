@@ -728,7 +728,7 @@ export const postJson = async (
   const url = `${MYGO_BASE_URL}/${serviceName}`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  
+
   try {
     const response = await fetch(url, {
       method: "POST",
@@ -739,30 +739,30 @@ export const postJson = async (
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
-    
+
     const responseText = await response.text();
     const contentType = response.headers.get("content-type") || "";
-    
+
     if (!response.ok) {
       const preview = responseText.slice(0, 400);
       throw new Error(
         `MyGo API error: ${response.status} ${response.statusText}. Response preview: ${preview}`
       );
     }
-    
+
     if (!contentType.toLowerCase().includes("application/json")) {
       const preview = responseText.slice(0, 400);
       throw new Error(
         `MyGo returned non-JSON response for ${serviceName}: ${preview}`
       );
     }
-    
+
     return JSON.parse(responseText);
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(`MyGo API timeout after ${REQUEST_TIMEOUT_MS}ms`);
     }
-    
+
     throw error;
   } finally {
     clearTimeout(timeoutId);
@@ -775,17 +775,17 @@ export const listCities = async (credential: MyGoCredential): Promise<MyGoCity[]
   const listCity = Array.isArray((data as { ListCity?: unknown }).ListCity)
     ? (data as { ListCity: Array<Record<string, unknown>> }).ListCity
     : null;
-  
+
   if (!listCity || listCity.length === 0) {
     throw new Error("No ListCity elements found in ListCity response");
   }
-  
+
   const cities: MyGoCity[] = [];
   listCity.forEach((city) => {
     const id = Number(city.Id);
     const name = city.Name ? String(city.Name) : "";
     const region = city.Region ? String(city.Region) : undefined;
-    
+
     if (id && name) {
       cities.push({
         id,
@@ -794,7 +794,7 @@ export const listCities = async (credential: MyGoCredential): Promise<MyGoCity[]
       });
     }
   });
-  
+
   return cities;
 };
 
