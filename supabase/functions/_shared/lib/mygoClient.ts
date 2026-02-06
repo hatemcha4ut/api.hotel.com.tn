@@ -285,6 +285,16 @@ export interface MyGoBookingResponse {
   [key: string]: unknown;
 }
 
+const normalizeBooleanValue = (value: unknown): boolean => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return normalized === "true" || normalized === "1";
+  }
+  return false;
+};
+
 // Build XML for ListCity
 export const buildListCityXml = (credential: MyGoCredential): string => {
   return `<?xml version="1.0" encoding="utf-8"?>
@@ -802,28 +812,221 @@ export const listHotels = async (
   credential: MyGoCredential,
   cityId: number,
 ): Promise<MyGoHotel[]> => {
-  const xml = buildListHotelXml(credential, cityId);
-  const responseXml = await postXml("ListHotel", xml, { idempotent: true });
-  return parseListHotelResponse(responseXml, cityId);
+  const payload = {
+    Credential: {
+      Login: credential.login,
+      Password: credential.password,
+    },
+    CityId: cityId,
+  };
+  const data = await postJson("ListHotel", payload);
+  const listHotel = Array.isArray((data as { ListHotel?: unknown }).ListHotel)
+    ? (data as { ListHotel: Array<Record<string, unknown>> }).ListHotel
+    : [];
+
+  const hotels: MyGoHotel[] = [];
+  listHotel.forEach((hotel) => {
+    const id = Number(hotel.Id);
+    const name = hotel.Name ? String(hotel.Name) : "";
+    const cityIdValue = Number(hotel.CityId);
+    const resolvedCityId = Number.isFinite(cityIdValue) && cityIdValue !== 0 ? cityIdValue : cityId;
+
+    if (Number.isFinite(id) && name && Number.isFinite(resolvedCityId)) {
+      const star = hotel.Star ? String(hotel.Star) : undefined;
+      const categoryTitle = hotel.CategoryTitle ? String(hotel.CategoryTitle) : undefined;
+      const address = hotel.Address ? String(hotel.Address) : undefined;
+      const longitude = hotel.Longitude ? String(hotel.Longitude) : undefined;
+      const latitude = hotel.Latitude ? String(hotel.Latitude) : undefined;
+      const image = hotel.Image ? String(hotel.Image) : undefined;
+      const note = hotel.Note ? String(hotel.Note) : undefined;
+
+      hotels.push({
+        id,
+        name,
+        cityId: resolvedCityId,
+        star,
+        categoryTitle,
+        address,
+        longitude,
+        latitude,
+        image,
+        note,
+      });
+    }
+  });
+
+  return hotels;
 };
 
 export const searchHotels = async (
   credential: MyGoCredential,
   params: MyGoSearchParams,
 ): Promise<MyGoSearchResponse> => {
-  const xml = buildHotelSearchXml(credential, params);
-  const responseXml = await postXml("HotelSearch", xml, { idempotent: true });
-  return parseHotelSearchResponse(responseXml);
+  const onlyAvailable = params.onlyAvailable ?? true;
+  const currency = params.currency ?? "TND";
+  const roomsPayload = params.rooms.map((room) => {
+    const roomPayload: Record<string, unknown> = { Adults: room.adults };
+    if (room.childrenAges && room.childrenAges.length > 0) {
+      roomPayload.Child = room.childrenAges;
+    }
+    return roomPayload;
+  });
+
+  const payload = {
+    Credential: {
+      Login: credential.login,
+      Password: credential.password,
+    },
+    CityId: params.cityId,
+    CheckIn: params.checkIn,
+    CheckOut: params.checkOut,
+    Currency: currency,
+    OnlyAvailable: onlyAvailable,
+    Rooms: roomsPayload,
+  };
+
+  const data = await postJson("HotelSearch", payload);
+  const response = data as Record<string, unknown>;
+  const responsePayload = typeof response.HotelSearch === "object" && response.HotelSearch
+    ? response.HotelSearch as Record<string, unknown>
+    : response;
+  const tokenValue = responsePayload.Token;
+  const token = typeof tokenValue === "string"
+    ? tokenValue
+    : typeof tokenValue === "number"
+    ? String(tokenValue)
+    : "";
+
+  if (!token) {
+    throw new Error("Token not found in HotelSearch response");
+  }
+
+  const hotelList = Array.isArray(responsePayload.Hotel)
+    ? responsePayload.Hotel
+    : Array.isArray(responsePayload.Hotels)
+    ? responsePayload.Hotels
+    : [];
+
+  const hotels: MyGoHotelSearchResult[] = [];
+  hotelList.forEach((hotel) => {
+    if (!hotel || typeof hotel !== "object") {
+      return;
+    }
+    const hotelRecord = hotel as Record<string, unknown>;
+    const id = Number(hotelRecord.Id);
+    const name = hotelRecord.Name ? String(hotelRecord.Name) : "";
+    const available = normalizeBooleanValue(hotelRecord.Available);
+
+    const roomList = Array.isArray(hotelRecord.Room)
+      ? hotelRecord.Room
+      : Array.isArray(hotelRecord.Rooms)
+      ? hotelRecord.Rooms
+      : [];
+
+    const rooms: MyGoRoomResult[] = [];
+    roomList.forEach((room) => {
+      if (!room || typeof room !== "object") {
+        return;
+      }
+      const roomRecord = room as Record<string, unknown>;
+      const onRequest = normalizeBooleanValue(roomRecord.OnRequest);
+      const priceValue = typeof roomRecord.Price === "number"
+        ? roomRecord.Price
+        : typeof roomRecord.Price === "string"
+        ? parseFloat(roomRecord.Price)
+        : undefined;
+      const price = typeof priceValue === "number" && Number.isFinite(priceValue) ? priceValue : undefined;
+
+      const roomData: MyGoRoomResult = {
+        onRequest,
+        price,
+      };
+
+      Object.entries(roomRecord).forEach(([key, value]) => {
+        if (key !== "OnRequest" && key !== "Price") {
+          roomData[key] = value;
+        }
+      });
+
+      rooms.push(roomData);
+    });
+
+    if (Number.isFinite(id) && name) {
+      const hotelData: MyGoHotelSearchResult = {
+        id,
+        name,
+        available,
+        rooms,
+      };
+
+      Object.entries(hotelRecord).forEach(([key, value]) => {
+        if (key !== "Id" && key !== "Name" && key !== "Available" && key !== "Room" && key !== "Rooms") {
+          hotelData[key] = value;
+        }
+      });
+
+      hotels.push(hotelData);
+    }
+  });
+
+  return { token, hotels };
 };
 
 export const createBooking = async (
   credential: MyGoCredential,
   params: MyGoBookingParams,
 ): Promise<MyGoBookingResponse> => {
-  const xml = buildBookingCreationXml(credential, params);
-  // BookingCreation is NOT idempotent - no retries
-  const responseXml = await postXml("BookingCreation", xml, { idempotent: false });
-  return parseBookingCreationResponse(responseXml);
+  const payload = {
+    Credential: {
+      Login: credential.login,
+      Password: credential.password,
+    },
+    Token: params.token,
+    PreBooking: params.preBooking,
+    CustomerName: params.customerName,
+    CustomerEmail: params.customerEmail,
+    CustomerPhone: params.customerPhone,
+    RoomSelections: params.roomSelections.map((selection) => ({
+      HotelId: selection.hotelId,
+      RoomId: selection.roomId,
+    })),
+  };
+  const data = await postJson("BookingCreation", payload);
+  const response = data as Record<string, unknown>;
+  const responsePayload = typeof response.BookingCreation === "object" && response.BookingCreation
+    ? response.BookingCreation as Record<string, unknown>
+    : response;
+  const bookingIdValue = typeof responsePayload.BookingId === "number"
+    ? responsePayload.BookingId
+    : typeof responsePayload.BookingId === "string"
+    ? parseInt(responsePayload.BookingId, 10)
+    : undefined;
+  const bookingId = typeof bookingIdValue === "number" && Number.isFinite(bookingIdValue)
+    ? bookingIdValue
+    : undefined;
+  const state = responsePayload.State ? String(responsePayload.State) : undefined;
+  const totalPriceValue = typeof responsePayload.TotalPrice === "number"
+    ? responsePayload.TotalPrice
+    : typeof responsePayload.TotalPrice === "string"
+    ? parseFloat(responsePayload.TotalPrice)
+    : undefined;
+  const totalPrice = typeof totalPriceValue === "number" && Number.isFinite(totalPriceValue)
+    ? totalPriceValue
+    : undefined;
+
+  const bookingResponse: MyGoBookingResponse = {
+    bookingId,
+    state,
+    totalPrice,
+  };
+
+  Object.entries(responsePayload).forEach(([key, value]) => {
+    if (key !== "BookingId" && key !== "State" && key !== "TotalPrice") {
+      bookingResponse[key] = value;
+    }
+  });
+
+  return bookingResponse;
 };
 
 // Filter out non-bookable results

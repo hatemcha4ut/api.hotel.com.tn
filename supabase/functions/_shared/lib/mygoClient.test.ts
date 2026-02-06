@@ -11,6 +11,9 @@ import { assertEquals, assertRejects, assertThrows } from "https://deno.land/std
 import {
   buildListCityPayload,
   listCities,
+  listHotels,
+  searchHotels,
+  createBooking,
   parseListCityResponse,
   parseListHotelResponse,
   parseHotelSearchResponse,
@@ -234,6 +237,170 @@ Deno.test("listCities should reject missing ListCity array", async () => {
       Error,
       "No ListCity elements found in ListCity response",
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("listHotels should map JSON ListHotel response", async () => {
+  const originalFetch = globalThis.fetch;
+  let receivedBody = "";
+
+  globalThis.fetch = async (_input, init) => {
+    receivedBody = String(init?.body ?? "");
+    return new Response(
+      JSON.stringify({
+        ListHotel: [
+          { Id: 101, Name: "Hotel Example", CityId: "2", Star: "5" },
+        ],
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      },
+    );
+  };
+
+  try {
+    const hotels = await listHotels({ login: "user", password: "pass" }, 2);
+    assertEquals(hotels, [
+      {
+        id: 101,
+        name: "Hotel Example",
+        cityId: 2,
+        star: "5",
+        categoryTitle: undefined,
+        address: undefined,
+        longitude: undefined,
+        latitude: undefined,
+        image: undefined,
+        note: undefined,
+      },
+    ]);
+    assertEquals(JSON.parse(receivedBody), {
+      Credential: { Login: "user", Password: "pass" },
+      CityId: 2,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("searchHotels should map JSON HotelSearch response", async () => {
+  const originalFetch = globalThis.fetch;
+  let receivedBody = "";
+
+  globalThis.fetch = async (_input, init) => {
+    receivedBody = String(init?.body ?? "");
+    return new Response(
+      JSON.stringify({
+        Token: "token-123",
+        Hotel: [
+          {
+            Id: "201",
+            Name: "Seaside Resort",
+            Available: "true",
+            CategoryTitle: "Luxury",
+            Room: [
+              { OnRequest: "false", Price: "150.5", Board: "BB" },
+            ],
+          },
+        ],
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      },
+    );
+  };
+
+  try {
+    const result = await searchHotels(
+      { login: "user", password: "pass" },
+      {
+        cityId: 1,
+        checkIn: "2026-03-15",
+        checkOut: "2026-03-20",
+        rooms: [{ adults: 2, childrenAges: [5, 8] }],
+      },
+    );
+    assertEquals(result.token, "token-123");
+    assertEquals(result.hotels, [
+      {
+        id: 201,
+        name: "Seaside Resort",
+        available: true,
+        rooms: [
+          {
+            onRequest: false,
+            price: 150.5,
+            Board: "BB",
+          },
+        ],
+        CategoryTitle: "Luxury",
+      },
+    ]);
+    assertEquals(JSON.parse(receivedBody), {
+      Credential: { Login: "user", Password: "pass" },
+      CityId: 1,
+      CheckIn: "2026-03-15",
+      CheckOut: "2026-03-20",
+      Currency: "TND",
+      OnlyAvailable: true,
+      Rooms: [{ Adults: 2, Child: [5, 8] }],
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("createBooking should map JSON BookingCreation response", async () => {
+  const originalFetch = globalThis.fetch;
+  let receivedBody = "";
+
+  globalThis.fetch = async (_input, init) => {
+    receivedBody = String(init?.body ?? "");
+    return new Response(
+      JSON.stringify({
+        BookingId: "12345",
+        State: "confirmed",
+        TotalPrice: "500.5",
+        Reference: "ABC-123",
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      },
+    );
+  };
+
+  try {
+    const result = await createBooking(
+      { login: "user", password: "pass" },
+      {
+        token: "token-123",
+        preBooking: true,
+        customerName: "John Doe",
+        customerEmail: "john@example.com",
+        customerPhone: "+216123456789",
+        roomSelections: [{ hotelId: 10, roomId: 20 }],
+      },
+    );
+    assertEquals(result, {
+      bookingId: 12345,
+      state: "confirmed",
+      totalPrice: 500.5,
+      Reference: "ABC-123",
+    });
+    assertEquals(JSON.parse(receivedBody), {
+      Credential: { Login: "user", Password: "pass" },
+      Token: "token-123",
+      PreBooking: true,
+      CustomerName: "John Doe",
+      CustomerEmail: "john@example.com",
+      CustomerPhone: "+216123456789",
+      RoomSelections: [{ HotelId: 10, RoomId: 20 }],
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }
