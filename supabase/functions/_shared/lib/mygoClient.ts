@@ -399,7 +399,9 @@ export const buildHotelSearchPayload = (
 ): {
   Credential: { Login: string; Password: string };
   SearchDetails: {
+    CityId: number;
     BookingDetails: {
+      CityId: number;
       CheckIn: string;
       CheckOut: string;
       Hotels: number[];
@@ -419,7 +421,9 @@ export const buildHotelSearchPayload = (
       Password: credential.password,
     },
     SearchDetails: {
+      CityId: params.cityId,
       BookingDetails: {
+        CityId: params.cityId,
         CheckIn: params.checkIn,
         CheckOut: params.checkOut,
         Hotels: params.hotelIds ?? [],
@@ -437,6 +441,7 @@ export const buildHotelSearchPayload = (
     },
   };
 };
+
 
 // Build XML for BookingCreation
 export const buildBookingCreationXml = (
