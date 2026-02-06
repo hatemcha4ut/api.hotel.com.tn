@@ -243,6 +243,7 @@ export interface MyGoSearchParams {
   checkIn: string; // YYYY-MM-DD
   checkOut: string; // YYYY-MM-DD
   rooms: MyGoRoom[];
+  hotelIds?: number[];
   currency?: "TND" | "EUR" | "USD";
   onlyAvailable?: boolean;
 }
@@ -260,6 +261,18 @@ export interface MyGoRoomResult {
   price?: number;
   [key: string]: unknown;
 }
+
+type MyGoHotelSearchJson = Record<string, unknown> & {
+  Id?: number;
+  Name?: string;
+  Available?: boolean;
+  Rooms?: MyGoRoomSearchJson[];
+};
+
+type MyGoRoomSearchJson = Record<string, unknown> & {
+  OnRequest?: boolean;
+  Price?: number;
+};
 
 export interface MyGoSearchResponse {
   token: string;
@@ -385,27 +398,43 @@ export const buildHotelSearchPayload = (
   params: MyGoSearchParams,
 ): {
   Credential: { Login: string; Password: string };
-  CityId: number;
-  CheckIn: string;
-  CheckOut: string;
-  Currency: string;
-  OnlyAvailable: boolean;
-  Rooms: Array<{ Adults: number; ChildrenAges?: number[] }>;
+  SearchDetails: {
+    BookingDetails: {
+      CheckIn: string;
+      CheckOut: string;
+      Hotels: number[];
+    };
+    Filters: {
+      Keywords: string;
+      Category: string[];
+      OnlyAvailable: boolean;
+      Tags: string[];
+    };
+    Rooms: Array<{ Adult: number; Child: number[] }>;
+  };
 } => {
   return {
     Credential: {
       Login: credential.login,
       Password: credential.password,
     },
-    CityId: params.cityId,
-    CheckIn: params.checkIn,
-    CheckOut: params.checkOut,
-    Currency: params.currency ?? "TND",
-    OnlyAvailable: params.onlyAvailable ?? true,
-    Rooms: params.rooms.map((room) => ({
-      Adults: room.adults,
-      ...(room.childrenAges ? { ChildrenAges: room.childrenAges } : {}),
-    })),
+    SearchDetails: {
+      BookingDetails: {
+        CheckIn: params.checkIn,
+        CheckOut: params.checkOut,
+        Hotels: params.hotelIds ?? [],
+      },
+      Filters: {
+        Keywords: "",
+        Category: [],
+        OnlyAvailable: params.onlyAvailable ?? true,
+        Tags: [],
+      },
+      Rooms: params.rooms.map((room) => ({
+        Adult: room.adults,
+        Child: room.childrenAges ?? [],
+      })),
+    },
   };
 };
 
@@ -936,77 +965,58 @@ export const searchHotels = async (
   params: MyGoSearchParams,
 ): Promise<MyGoSearchResponse> => {
   const data = await postJson("HotelSearch", buildHotelSearchPayload(credential, params));
-  const token = typeof (data as { Token?: unknown }).Token === "string"
-    ? (data as { Token: string }).Token
-    : "";
 
-  if (!token) {
-    throw new Error("HotelSearch response missing required Token field");
+  const errorMessage = (data as { ErrorMessage?: { Code?: unknown; Description?: unknown } })
+    .ErrorMessage;
+  if (errorMessage?.Code) {
+    throw new Error(
+      `MyGo HotelSearch error ${errorMessage.Code}: ${errorMessage.Description}`,
+    );
   }
 
-  const hotelEntries = Array.isArray((data as { Hotels?: unknown }).Hotels)
-    ? (data as { Hotels: Array<Record<string, unknown>> }).Hotels
-    : null;
-
-  if (!hotelEntries) {
-    throw new Error("HotelSearch response missing Hotels array");
+  const searchId = (data as { SearchId?: unknown }).SearchId;
+  if (typeof searchId !== "string" || !searchId) {
+    throw new Error("MyGo HotelSearch response missing SearchId");
   }
+
+  const hotelsJson = Array.isArray((data as { HotelSearch?: unknown }).HotelSearch)
+    ? ((data as { HotelSearch: MyGoHotelSearchJson[] }).HotelSearch)
+    : [];
 
   const hotels: MyGoHotelSearchResult[] = [];
 
-  hotelEntries.forEach((hotel) => {
-    const id = Number(hotel.Id);
-    const name = hotel.Name ? String(hotel.Name) : "";
-    const available = parseJsonBoolean(hotel.Available);
-    const roomEntries = Array.isArray(hotel.Rooms) ? hotel.Rooms : [];
-    const rooms: MyGoRoomResult[] = [];
+  hotelsJson.forEach((hotel) => {
+    const idValue = hotel.Id;
+    const id = typeof idValue === "number" ? idValue : Number(idValue);
+    const name = typeof hotel.Name === "string" ? hotel.Name : "";
+    if (!Number.isFinite(id) || id === 0 || !name) {
+      return;
+    }
 
-    roomEntries.forEach((room) => {
-      if (!room || typeof room !== "object") {
-        return;
+    const roomsJson = Array.isArray(hotel.Rooms) ? hotel.Rooms : [];
+    const rooms: MyGoRoomResult[] = roomsJson.map((room) => ({
+      ...room,
+      onRequest: room.OnRequest === true,
+      price: room.Price ?? undefined,
+    }));
+
+    const hotelResult: MyGoHotelSearchResult = {
+      id,
+      name,
+      available: hotel.Available === true,
+      rooms,
+    };
+
+    Object.entries(hotel).forEach(([key, value]) => {
+      if (key !== "Id" && key !== "Name" && key !== "Available" && key !== "Rooms") {
+        hotelResult[key] = value;
       }
-      const roomData = room as Record<string, unknown>;
-      const onRequest = parseJsonBoolean(roomData.OnRequest);
-      const priceValue = roomData.Price;
-      const price = typeof priceValue === "number"
-        ? priceValue
-        : typeof priceValue === "string" && priceValue.trim().length > 0
-        ? Number(priceValue)
-        : undefined;
-      const normalizedPrice = normalizeJsonNumber(price);
-      const roomResult: MyGoRoomResult = {
-        onRequest,
-        price: normalizedPrice,
-      };
-
-      Object.entries(roomData).forEach(([key, value]) => {
-        if (key !== "OnRequest" && key !== "Price") {
-          roomResult[key] = value;
-        }
-      });
-
-      rooms.push(roomResult);
     });
 
-    if (Number.isFinite(id) && id !== 0 && name) {
-      const hotelResult: MyGoHotelSearchResult = {
-        id,
-        name,
-        available,
-        rooms,
-      };
-
-      Object.entries(hotel).forEach(([key, value]) => {
-        if (key !== "Id" && key !== "Name" && key !== "Available" && key !== "Rooms") {
-          hotelResult[key] = value;
-        }
-      });
-
-      hotels.push(hotelResult);
-    }
+    hotels.push(hotelResult);
   });
 
-  return { token, hotels };
+  return { token: searchId, hotels };
 };
 
 export const createBooking = async (
