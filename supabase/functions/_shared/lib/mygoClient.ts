@@ -1096,7 +1096,9 @@ export const filterVisibleHotels = (
   hotels: MyGoHotelSearchResult[],
 ): MyGoHotelSearchResult[] => {
   return hotels.map((hotel) => {
-    const rooms = hotel.rooms.filter((room) => room.price != null);
+    const rooms = hotel.rooms.filter(
+      (room) => room.price !== null && room.price !== undefined,
+    );
     const hasInstantConfirmation = rooms.some((room) => room.onRequest === false);
     return {
       ...hotel,
