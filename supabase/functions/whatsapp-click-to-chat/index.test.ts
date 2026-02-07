@@ -3,23 +3,7 @@
  */
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-
-/**
- * Build French message for WhatsApp click-to-chat
- */
-const buildWhatsAppMessage = (
-  bookingId: string,
-  email?: string,
-  guestWhatsApp?: string,
-): string => {
-  const lines = [
-    `Bonjour, je vous contacte au sujet de la réservation #${bookingId}.`,
-    `Email: ${email || "Non renseigné"}`,
-    `WhatsApp client: ${guestWhatsApp || "Non renseigné"}`,
-  ];
-
-  return lines.join("\n");
-};
+import { buildWhatsAppMessage } from "./index.ts";
 
 Deno.test("buildWhatsAppMessage - with all parameters", () => {
   const result = buildWhatsAppMessage(

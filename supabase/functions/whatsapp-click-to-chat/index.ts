@@ -20,7 +20,7 @@ const WHATSAPP_HOTEL_NUMBER = "21651613888";
 /**
  * Build French message for WhatsApp click-to-chat
  */
-const buildWhatsAppMessage = (
+export const buildWhatsAppMessage = (
   bookingId: string,
   email?: string,
   guestWhatsApp?: string,
@@ -81,7 +81,7 @@ const handleClickToChat = (url: URL): Response => {
     JSON.stringify({
       url: whatsappUrl,
       bookingId,
-      guestWhatsApp: guestWhatsApp || undefined,
+      guestWhatsApp,
     }),
     {
       status: 200,
