@@ -26,3 +26,22 @@ for update
 to authenticated
 using ((select auth.uid()) = user_id)
 with check ((select auth.uid()) = user_id);
+
+-- Profiles table policies
+alter table profiles enable row level security;
+
+create policy "profiles_select_own" on profiles
+for select
+to authenticated
+using ((select auth.uid()) = user_id);
+
+create policy "profiles_insert_own" on profiles
+for insert
+to authenticated
+with check ((select auth.uid()) = user_id);
+
+create policy "profiles_update_own" on profiles
+for update
+to authenticated
+using ((select auth.uid()) = user_id)
+with check ((select auth.uid()) = user_id);
