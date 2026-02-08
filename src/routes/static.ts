@@ -32,6 +32,61 @@ const getMyGoCredential = (env: Env): MyGoCredential => ({
 });
 
 /**
+ * GET /static/cities
+ * Get list of cities from myGO — public, cached, GET-friendly endpoint
+ * Response: { items: [...], source: "mygo", cached: boolean, fetchedAt: string }
+ */
+static_routes.get("/cities", async (c) => {
+  const logger = createLogger(c.var);
+  const startTime = Date.now();
+  logger.info("Fetching cities list (GET)");
+
+  try {
+    const credential = getMyGoCredential(c.env);
+    const cities = await listCities(credential);
+    const durationMs = Date.now() - startTime;
+
+    logger.info("Cities fetched", { count: cities.length, durationMs });
+
+    // Build ETag from count + first/last city id for lightweight cache validation
+    const firstId = cities.length > 0 ? cities[0].id : 0;
+    const lastId = cities.length > 0 ? cities[cities.length - 1].id : 0;
+    const etag = `"cities-${cities.length}-${firstId}-${lastId}"`;
+
+    // Check If-None-Match
+    const ifNoneMatch = c.req.header("If-None-Match");
+    if (ifNoneMatch === etag) {
+      return c.body(null, 304);
+    }
+
+    return c.json(
+      {
+        items: cities.map((city) => ({
+          id: city.id,
+          name: city.name,
+          region: city.region ?? null,
+        })),
+        source: "mygo",
+        cached: false, // Always false; reserved for future server-side cache implementation
+        fetchedAt: new Date().toISOString(),
+      },
+      200,
+      {
+        "Cache-Control": CACHE_HEADER,
+        "ETag": etag,
+      }
+    );
+  } catch (error) {
+    const durationMs = Date.now() - startTime;
+    logger.error("Failed to fetch cities (GET)", {
+      error: error instanceof Error ? error.message : String(error),
+      durationMs,
+    });
+    throw new ExternalServiceError("Failed to fetch cities from myGO", "MyGO");
+  }
+});
+
+/**
  * POST /static/list-city
  * Get list of cities from myGO with caching
  */
