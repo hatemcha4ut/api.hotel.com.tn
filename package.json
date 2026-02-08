@@ -1,0 +1,27 @@
+{
+  "name": "api-hotel-com-tn",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker API for hotel.com.tn with myGO integration",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": ["cloudflare", "worker", "hono", "hotel", "mygo"],
+  "author": "",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "hono": "^4.0.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240117.0",
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3",
+    "wrangler": "^3.24.0",
+    "vitest": "^1.2.0"
+  }
+}
