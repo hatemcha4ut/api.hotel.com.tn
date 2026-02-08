@@ -67,7 +67,7 @@ static_routes.get("/cities", async (c) => {
           region: city.region ?? null,
         })),
         source: "mygo",
-        cached: false,
+        cached: false, // Always false; reserved for future server-side cache implementation
         fetchedAt: new Date().toISOString(),
       },
       200,

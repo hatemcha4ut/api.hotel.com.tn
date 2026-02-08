@@ -42,7 +42,7 @@ Public endpoint to retrieve the list of cities available for hotel search.
   - `name` (string): City name
   - `region` (string | null): Region name if available
 - `source` (string): Data source identifier (always "mygo")
-- `cached` (boolean): Whether the response was served from cache (currently always false)
+- `cached` (boolean): Whether the response was served from cache (currently always false, reserved for future implementation)
 - `fetchedAt` (string): ISO 8601 timestamp of when the data was fetched
 
 ### Caching
