@@ -49,23 +49,19 @@ export interface MyGoSearchParams {
 }
 
 export interface MyGoRoomResult {
-  id: number;
-  name: string;
-  price: number | null;
-  currency: string;
-  boarding: string;
-  boardingTitle?: string;
   onRequest: boolean;
-  views?: string[];
-  supplements?: Array<{
-    id: number;
-    title: string;
-    price: number;
-  }>;
-  pax?: {
-    adults: number;
-    children: number[];
-  };
+  price?: number;
+  roomId?: number;
+  roomName?: string;
+  basePrice?: number;
+  priceWithMarkup?: number;
+  boardCode?: string;
+  boardName?: string;
+  adults?: number;
+  childrenAges?: number[];
+  token?: string;
+  cancellationPolicy?: unknown[];
+  [key: string]: unknown;
 }
 
 export interface MyGoHotelSearchResult {
@@ -80,54 +76,28 @@ export interface MyGoHotelSearchResult {
   address?: string;
   image?: string;
   themes?: string[];
+  facilities?: unknown[];
   hasInstantConfirmation?: boolean;
+  note?: unknown;
+  [key: string]: unknown;
 }
 
 export interface MyGoSearchResponse {
-  token?: string;
+  token: string;
   hotels: MyGoHotelSearchResult[];
 }
 
 // Booking types
 export interface MyGoBookingParams {
-  preBooking: boolean;
   token: string;
-  methodPayment: string;
-  currency: string;
-  city: number;
-  hotel: number;
-  checkIn: string;
-  checkOut: string;
-  options: Array<{
-    id: number;
-    quantity: number;
+  preBooking: boolean;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  roomSelections: Array<{
+    hotelId: number;
+    roomId: number;
   }>;
-  rooms: Array<{
-    id: number;
-    boarding: string;
-    views?: number[];
-    supplements?: number[];
-    pax: {
-      adults: Array<{
-        firstName: string;
-        lastName: string;
-        nationality: string;
-      }>;
-      children?: Array<{
-        firstName: string;
-        lastName: string;
-        nationality: string;
-        age: number;
-      }>;
-    };
-  }>;
-  customer: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    phone: string;
-    nationality: string;
-  };
 }
 
 export interface MyGoBookingResponse {
