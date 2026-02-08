@@ -5,6 +5,21 @@ Ce document décrit l'architecture, les processus de déploiement, les audits et
 
 ---
 
+## Table of Contents
+
+1. [Contexte & Domaines](#1-contexte--domaines)
+2. [Source de Vérité : "Ce qui est déployé"](#2-source-de-vérité--ce-qui-est-déployé)
+3. [Exigence : "/version partout"](#3-exigence--version-partout)
+4. [myGO Credit Dashboard (Admin)](#4-mygo-credit-dashboard-admin)
+5. [Checkout Policy](#5-checkout-policy)
+6. [ClicToPay Integration](#6-clictopay-integration)
+7. [Cloudflare Worker API Reference](#7-cloudflare-worker-api-reference)
+8. [Security & Best Practices](#8-security--best-practices)
+9. [Pre-Deployment Checklist](#9-pre-deployment-checklist)
+10. [Contacts & Ressources](#10-contacts--ressources)
+
+---
+
 ## 1. Contexte & Domaines
 
 La plateforme hotel.com.tn est composée de plusieurs services déployés sur différentes infrastructures :
@@ -478,3 +493,150 @@ Avant de mettre en production une nouvelle version majeure, suivez cette checkli
 - [ ] Procédure de rollback automatisée
 - [ ] Guide troubleshooting pour erreurs myGO fréquentes
 - [ ] Documentation API complète (OpenAPI/Swagger)
+
+---
+
+## 12. Cloudflare Worker API
+
+### 12.1 Complete API Reference
+
+For complete API endpoint documentation, request/response schemas, and examples, see:
+
+**[API_REFERENCE.md](./API_REFERENCE.md)** - Complete API documentation for all Cloudflare Worker endpoints
+
+### 12.2 Key API Sections
+
+- **Authentication**: Guest sessions, user registration, login
+- **Profile Management**: WhatsApp consent and profile updates
+- **Static Data**: Cities, countries, categories, boardings, tags, languages, currencies
+- **Hotel Operations**: Search, detail, availability
+- **Booking Flow**: Pre-booking, booking creation, booking retrieval
+- **Checkout & Payments**: Credit check, ClicToPay integration, payment callbacks
+- **Admin Operations**: Credit monitoring with SSE, settings management, booking management
+
+### 12.3 Architecture Overview
+
+```
+┌─────────────────┐
+│  www.hotel.com  │
+│  admin.hotel.   │
+│      com        │
+└────────┬────────┘
+         │ HTTPS
+         ▼
+┌─────────────────────┐
+│ Cloudflare Worker  │
+│  (api.hotel.com)   │
+│                    │
+│  • Hono Framework  │
+│  • JWT Auth        │
+│  • CORS Middleware │
+│  • Rate Limiting   │
+└──┬──────────────┬──┘
+   │              │
+   │ myGO API     │ ClicToPay
+   │              │
+   ▼              ▼
+┌────────┐   ┌──────────┐
+│  myGO  │   │ClicToPay │
+│  Hotel │   │ Payment  │
+│   API  │   │ Gateway  │
+└────────┘   └──────────┘
+   │
+   │ Database
+   ▼
+┌─────────────┐
+│  Supabase   │
+│  Postgres   │
+│             │
+│  • bookings │
+│  • payments │
+│  • profiles │
+│  • settings │
+└─────────────┘
+```
+
+### 12.4 Environment Variables
+
+All environment variables are configured as Cloudflare Worker secrets (never committed to code):
+
+**Required Secrets:**
+- `MYGO_LOGIN` - myGO API username
+- `MYGO_PASSWORD` - myGO API password
+- `SUPABASE_URL` - Supabase project URL
+- `SUPABASE_SERVICE_ROLE_KEY` - Backend service role key
+- `SUPABASE_ANON_KEY` - Public anonymous key
+- `SUPABASE_JWT_SECRET` - JWT verification secret
+- `CLICTOPAY_USERNAME` - ClicToPay API username
+- `CLICTOPAY_PASSWORD` - ClicToPay API password
+- `CLICTOPAY_SECRET` - HMAC secret for callback verification
+- `ALLOWED_ORIGINS` - Comma-separated CORS allowlist (e.g., "https://www.hotel.com.tn,https://admin.hotel.com.tn")
+
+**Build-time Variables:**
+- `GITHUB_SHA` - Git commit SHA (injected by CI/CD)
+- `BUILT_AT` - Build timestamp (injected by CI/CD)
+- `ENV` - Environment name (production/staging/development)
+
+### 12.5 Deployment
+
+Deployment is automated via GitHub Actions (`.github/workflows/deploy-worker.yml`):
+
+```bash
+# Manual deployment (from local)
+npm install
+wrangler deploy
+
+# Verify deployment
+curl https://api.hotel.com.tn/version
+```
+
+**Deployment Steps:**
+1. Push to `main` branch
+2. GitHub Actions builds Worker
+3. Injects `GITHUB_SHA` and `BUILT_AT`
+4. Deploys to Cloudflare
+5. Verifies `/version` endpoint
+
+### 12.6 Testing
+
+```bash
+# Install dependencies
+npm install
+
+# Type check
+npm run type-check
+
+# Run local development server
+npm run dev
+
+# Deploy to staging
+wrangler deploy --env staging
+```
+
+### 12.7 Security Considerations
+
+- **PII Masking**: All logs mask email, phone, WhatsApp numbers
+- **Token Security**: Search tokens are stripped from API responses
+- **HMAC Verification**: All ClicToPay callbacks are signature-verified
+- **JWT Validation**: All authenticated endpoints verify Supabase JWT
+- **Rate Limiting**: Cloudflare-level rate limiting per IP/user
+- **CORS**: Strict origin allowlist (no wildcards)
+
+### 12.8 Backward Compatibility
+
+The Cloudflare Worker API maintains backward compatibility with existing Supabase Edge Functions:
+
+- All Edge Function endpoints remain operational
+- Worker adds new endpoints without breaking existing ones
+- Frontend can gradually migrate to Worker endpoints
+- Both systems share the same Supabase database
+
+### 12.9 Migration Path
+
+**Phase 1**: Deploy Worker alongside Edge Functions (current)
+**Phase 2**: Update frontends to use Worker endpoints
+**Phase 3**: Deprecate Edge Function endpoints
+**Phase 4**: Remove Edge Functions (future)
+
+---
+
