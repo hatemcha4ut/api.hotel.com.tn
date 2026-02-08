@@ -13,6 +13,11 @@ This project implements a Supabase Edge Functions backend for hotel bookings usi
 - **Supabase Postgres** for data storage
 - **MyGo XML API** for hotel search and booking
 
+## Documentation
+
+- 📋 [Development Guide](docs/DEVELOPMENT.md) — architecture, deployment audit, security, go-live checklists
+- 📝 [Project Thread](docs/THREAD.md) — current objectives and PR strategy
+
 ## Edge Functions
 
 ### 1. inventory-sync (PRIVATE/Admin)
@@ -194,6 +199,35 @@ curl -X POST https://your-project.supabase.co/functions/v1/create-booking \
 - Server fetches fresh token from MyGo using searchParams
 - Token never leaves the server (memory only)
 - This prevents token exposure and cache pollution
+
+### 5. version (PUBLIC)
+
+Returns build metadata for deployment audit purposes.
+
+**Endpoint**: `/functions/v1/version`
+
+**Authentication**: None (public endpoint)
+
+**Method**: `GET` (unlike other endpoints which use POST)
+
+**Example**:
+```bash
+curl -X GET https://your-project.supabase.co/functions/v1/version
+```
+
+**Response**:
+```json
+{
+  "sha": "abc123def456...",
+  "builtAt": "2026-02-08T12:00:00Z",
+  "env": "production"
+}
+```
+
+**Purpose**:
+- Verify which commit is currently deployed
+- Audit deployment history
+- Troubleshoot issues by correlating logs with specific builds
 
 ## MyGo Protocol Notes
 
