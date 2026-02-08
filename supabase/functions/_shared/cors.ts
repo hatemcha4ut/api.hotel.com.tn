@@ -7,6 +7,7 @@
 // Allowlist of permitted origins
 const ALLOWED_ORIGINS = new Set([
   "https://www.hotel.com.tn",
+  "https://admin.hotel.com.tn", // Admin interface
   "http://localhost:5173",
 ]);
 
