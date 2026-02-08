@@ -1,0 +1,66 @@
+name: Deploy Cloudflare Worker (PLACEHOLDER)
+
+# PLACEHOLDER WORKFLOW FOR FUTURE CLOUDFLARE WORKER DEPLOYMENT
+# 
+# Currently, api.hotel.com.tn uses Supabase Edge Functions (Deno).
+# This workflow is prepared for the future migration to Cloudflare Workers.
+#
+# To activate this workflow when ready:
+# 1. Set up a Cloudflare Worker project with wrangler.toml
+# 2. Configure GitHub Secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+# 3. Update the wrangler config to inject GITHUB_SHA and BUILT_AT
+# 4. Remove this comment block and test the workflow
+
+on:
+  push:
+    branches:
+      - main
+    # Uncomment when Worker code exists:
+    # paths:
+    #   - 'worker/**'
+    #   - '.github/workflows/deploy-worker.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    # Uncomment when ready to deploy:
+    # if: false  # Set to true or remove when Worker is ready
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      # Generate build metadata
+      - name: Generate build metadata
+        id: build_meta
+        run: |
+          BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "built_at=${BUILT_AT}" >> $GITHUB_OUTPUT
+          echo "sha=${GITHUB_SHA}" >> $GITHUB_OUTPUT
+      
+      # Deploy to Cloudflare Workers
+      # This step is commented out until Worker code exists
+      # - name: Deploy to Cloudflare Workers
+      #   uses: cloudflare/wrangler-action@v3
+      #   with:
+      #     apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      #     accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      #     command: deploy
+      #     # Pass build metadata as environment variables
+      #     # These will be available at build time and can be baked into the Worker
+      #     environment: production
+      #     vars: |
+      #       GITHUB_SHA=${{ steps.build_meta.outputs.sha }}
+      #       BUILT_AT=${{ steps.build_meta.outputs.built_at }}
+      
+      - name: Placeholder notice
+        run: |
+          echo "⚠️  This is a PLACEHOLDER workflow for future Cloudflare Worker deployment"
+          echo "📋 Current backend: Supabase Edge Functions (see deploy-edge-functions.yml)"
+          echo "🔮 Future backend: Cloudflare Worker at api.hotel.com.tn"
+          echo ""
+          echo "Build metadata that would be injected:"
+          echo "  - GITHUB_SHA: ${{ steps.build_meta.outputs.sha }}"
+          echo "  - BUILT_AT: ${{ steps.build_meta.outputs.built_at }}"
+          echo "  - ENVIRONMENT: production"

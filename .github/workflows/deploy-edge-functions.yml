@@ -24,3 +24,12 @@ jobs:
       # Déploie toutes les Edge Functions du dossier supabase/functions
       - name: Deploy all Edge Functions
         run: supabase functions deploy --project-ref $SUPABASE_PROJECT_ID
+      
+      # Set version metadata as Supabase secrets for /version endpoint
+      - name: Set version metadata secrets
+        run: |
+          BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          supabase secrets set GITHUB_SHA="${GITHUB_SHA}" --project-ref $SUPABASE_PROJECT_ID
+          supabase secrets set BUILT_AT="${BUILT_AT}" --project-ref $SUPABASE_PROJECT_ID
+          supabase secrets set ENVIRONMENT="production" --project-ref $SUPABASE_PROJECT_ID
+          echo "Version metadata set: SHA=${GITHUB_SHA}, BUILT_AT=${BUILT_AT}"
