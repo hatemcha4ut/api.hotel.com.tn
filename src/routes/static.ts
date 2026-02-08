@@ -49,7 +49,9 @@ static_routes.get("/cities", async (c) => {
     logger.info("Cities fetched", { count: cities.length, durationMs });
 
     // Build ETag from count + first/last city id for lightweight cache validation
-    const etag = `"cities-${cities.length}-${cities[0]?.id ?? 0}-${cities[cities.length - 1]?.id ?? 0}"`;
+    const firstId = cities.length > 0 ? cities[0].id : 0;
+    const lastId = cities.length > 0 ? cities[cities.length - 1].id : 0;
+    const etag = `"cities-${cities.length}-${firstId}-${lastId}"`;
 
     // Check If-None-Match
     const ifNoneMatch = c.req.header("If-None-Match");
