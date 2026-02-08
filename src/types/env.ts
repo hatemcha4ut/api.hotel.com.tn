@@ -17,6 +17,7 @@ export interface Env {
   CLICTOPAY_USERNAME: string;
   CLICTOPAY_PASSWORD: string;
   CLICTOPAY_SECRET: string;
+  CLICTOPAY_BASE_URL?: string; // Optional: defaults to test URL if not provided
 
   // CORS configuration
   ALLOWED_ORIGINS: string; // Comma-separated list

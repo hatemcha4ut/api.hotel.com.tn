@@ -17,8 +17,14 @@ import type {
 } from "../types/clictopay";
 import { ExternalServiceError } from "../middleware/errorHandler";
 
-// ClicToPay API base URL
-const CLICTOPAY_BASE_URL = "https://test.clictopay.com/payment/rest"; // Use production URL in production
+// ClicToPay API base URL - configurable via environment
+// Use test URL for testing: https://test.clictopay.com/payment/rest
+// Use production URL for production: https://ipay.clictopay.com/payment/rest
+const getClicToPayBaseUrl = (env?: { CLICTOPAY_BASE_URL?: string }): string => {
+  return env?.CLICTOPAY_BASE_URL || "https://test.clictopay.com/payment/rest";
+};
+
+const CLICTOPAY_BASE_URL = getClicToPayBaseUrl();
 
 // Request timeout
 const REQUEST_TIMEOUT_MS = 30000;

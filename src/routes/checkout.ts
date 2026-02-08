@@ -157,8 +157,9 @@ checkout.post("/initiate", async (c) => {
     // Generate unique order number
     const orderNumber = `BK-${booking.id.substring(0, 8)}-${Date.now()}`;
 
-    // Convert amount to minor units (millimes for TND)
-    const amountInMinorUnits = Math.round(booking.total_price * 1000);
+    // Convert amount to minor units (millimes for TND: 1 TND = 1000 millimes)
+    const TND_TO_MILLIMES = 1000;
+    const amountInMinorUnits = Math.round(booking.total_price * TND_TO_MILLIMES);
 
     const preAuthResult = await clictopay.registerPreAuth({
       orderNumber,

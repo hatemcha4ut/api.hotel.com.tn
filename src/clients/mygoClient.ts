@@ -762,13 +762,16 @@ export const listCurrencies = async (
   return extractListResponse(data, "ListCurrency");
 };
 
+// CreditCheck - Get remaining deposit balance
 export const creditCheck = async (
   credential: MyGoCredential,
-): Promise<MyGoJsonResponse> => {
-  return myGoPostJson(
+  params: MyGoJsonRequest = {}, // Optional additional parameters
+): Promise<{ RemainingDeposit: number; Currency: string }> => {
+  const response = await myGoPostJson<{ RemainingDeposit: number; Currency: string }>(
     "CreditCheck",
     buildCreditCheckPayload(credential),
   );
+  return response;
 };
 
 export const hotelDetail = async (

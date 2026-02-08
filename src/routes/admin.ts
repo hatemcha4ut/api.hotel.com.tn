@@ -32,6 +32,7 @@ admin.get("/mygo/credit", async (c) => {
     password: c.env.MYGO_PASSWORD,
   };
 
+  // Empty params object - creditCheck doesn't require additional parameters
   const creditData = await creditCheck(credentials, {});
   
   logger.info("myGO credit fetched", {
