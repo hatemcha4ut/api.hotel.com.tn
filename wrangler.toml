@@ -1,0 +1,46 @@
+name = "api-hotel-com-tn"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# Cloudflare Worker configuration for api.hotel.com.tn
+# This replaces Supabase Edge Functions as the primary API backend
+
+[env.production]
+name = "api-hotel-com-tn"
+workers_dev = false
+routes = [
+  { pattern = "api.hotel.com.tn/*", zone_name = "hotel.com.tn" }
+]
+
+[env.staging]
+name = "api-hotel-com-tn-staging"
+workers_dev = false
+
+# Environment variables (set via wrangler secret or Cloudflare dashboard)
+# DO NOT commit actual secrets to this file
+# 
+# Required secrets:
+# - MYGO_LOGIN: MyGO API username
+# - MYGO_PASSWORD: MyGO API password
+# - SUPABASE_URL: Supabase project URL
+# - SUPABASE_SERVICE_ROLE_KEY: Supabase service role key for backend operations
+# - SUPABASE_ANON_KEY: Supabase anonymous key for public operations
+# - SUPABASE_JWT_SECRET: JWT secret for token verification
+# - CLICTOPAY_USERNAME: ClicToPay API username
+# - CLICTOPAY_PASSWORD: ClicToPay API password
+# - CLICTOPAY_SECRET: ClicToPay HMAC secret for callback verification
+# - ALLOWED_ORIGINS: Comma-separated list of allowed CORS origins
+# - HOTEL_UPSTREAM_BASE_URL: Optional upstream URL (if needed)
+# - GITHUB_SHA: Git commit SHA (injected at build time)
+# - BUILT_AT: Build timestamp (injected at build time)
+# - ENV: Environment name (production, staging, development)
+
+# Build-time variables (set via GitHub Actions)
+[vars]
+ENV = "production"
+
+# Example secrets (DO NOT uncomment with real values):
+# [secrets]
+# MYGO_LOGIN = "your-mygo-username"
+# MYGO_PASSWORD = "your-mygo-password"
+# ...
