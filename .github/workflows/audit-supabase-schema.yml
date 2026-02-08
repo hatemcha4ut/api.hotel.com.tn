@@ -1,11 +1,20 @@
 name: Audit Supabase Schema
 
-# Manual workflow to dump the production database schema
-# This helps audit the current state of the production database
+# Manual workflow to dump the database schema from production or staging
+# This helps audit the current state of the database
 # and identify any manual changes that need to be captured in migrations
 
 on:
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to audit (prod or staging)'
+        required: true
+        default: 'prod'
+        type: choice
+        options:
+          - prod
+          - staging
 
 jobs:
   dump-schema:
@@ -17,16 +26,32 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client
       
-      - name: Dump production schema
+      - name: Dump database schema
         env:
           SUPABASE_DB_URL_PROD: ${{ secrets.SUPABASE_DB_URL_PROD }}
+          SUPABASE_DB_URL_STAGING: ${{ secrets.SUPABASE_DB_URL_STAGING }}
+          ENVIRONMENT: ${{ inputs.environment }}
         run: |
-          # Generate filename with current date
+          # Select the appropriate database URL based on environment
+          if [ "$ENVIRONMENT" = "staging" ]; then
+            DB_URL="${SUPABASE_DB_URL_STAGING}"
+          else
+            DB_URL="${SUPABASE_DB_URL_PROD}"
+          fi
+          
+          # Validate that the DB URL is set
+          if [ -z "$DB_URL" ]; then
+            echo "Error: Database URL not configured for environment: $ENVIRONMENT"
+            exit 1
+          fi
+          
+          # Generate filename with environment and current date
           DATE=$(date +%Y%m%d-%H%M%S)
-          FILENAME="supabase-schema-${DATE}.sql"
+          FILENAME="supabase-schema-${ENVIRONMENT}-${DATE}.sql"
           
           # Dump schema only (no data, no owner, no privileges)
-          pg_dump "${SUPABASE_DB_URL_PROD}" \
+          # Use --dbname to avoid exposing connection string in process list
+          pg_dump --dbname="$DB_URL" \
             --schema-only \
             --no-owner \
             --no-privileges \
@@ -34,10 +59,32 @@ jobs:
           
           echo "Schema dumped to ${FILENAME}"
           ls -lh "${FILENAME}"
+          
+          # Store filename for next step
+          echo "SCHEMA_FILE=${FILENAME}" >> $GITHUB_ENV
+      
+      - name: Generate schema summary
+        run: |
+          # Extract counts without exposing connection string
+          TABLES_COUNT=$(grep -c "^CREATE TABLE" "${SCHEMA_FILE}" || echo "0")
+          TYPES_COUNT=$(grep -c "^CREATE TYPE" "${SCHEMA_FILE}" || echo "0")
+          FUNCTIONS_COUNT=$(grep -c "^CREATE FUNCTION" "${SCHEMA_FILE}" || echo "0")
+          
+          echo "### Schema Summary for ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tables**: ${TABLES_COUNT}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Types**: ${TYPES_COUNT}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Functions**: ${FUNCTIONS_COUNT}" >> $GITHUB_STEP_SUMMARY
+          echo "- **File**: ${SCHEMA_FILE}" >> $GITHUB_STEP_SUMMARY
+          
+          echo "Schema summary:"
+          echo "  Tables: ${TABLES_COUNT}"
+          echo "  Types: ${TYPES_COUNT}"
+          echo "  Functions: ${FUNCTIONS_COUNT}"
       
       - name: Upload schema artifact
         uses: actions/upload-artifact@v4
         with:
-          name: supabase-schema-${{ github.run_number }}
+          name: supabase-schema-${{ inputs.environment }}-${{ github.run_number }}
           path: supabase-schema-*.sql
           retention-days: 90
