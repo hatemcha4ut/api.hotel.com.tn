@@ -13,7 +13,7 @@ import { extractGuestSession } from "./middleware/auth";
 // Import route handlers
 import auth from "./routes/auth";
 import profile from "./routes/profile";
-import static from "./routes/static";
+import staticRoutes from "./routes/static";
 import hotels from "./routes/hotels";
 import bookings from "./routes/bookings";
 import checkout from "./routes/checkout";
@@ -43,7 +43,7 @@ app.get("/health", (c) => {
 // Mount route handlers
 app.route("/auth", auth);
 app.route("/profile", profile);
-app.route("/static", static);
+app.route("/static", staticRoutes);
 app.route("/hotels", hotels);
 app.route("/bookings", bookings);
 app.route("/checkout", checkout);

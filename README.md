@@ -3,13 +3,24 @@ Hotel booking backend with MyGo XML integration
 
 ## Overview
 
-This project implements a Supabase Edge Functions backend for hotel bookings using MyGo's custom XML API protocol.
+This project implements a dual backend architecture for hotel bookings using MyGo's custom XML API protocol:
+- **Cloudflare Workers** (Hono framework + TypeScript) — Primary API at `api.hotel.com.tn`
+- **Supabase Edge Functions** (Deno + TypeScript) — Legacy/backup endpoints
+
+The Cloudflare Worker provides the main API for both the public website (`www.hotel.com.tn`) and the admin portal (`admin.hotel.com.tn`), while Supabase Edge Functions remain available for backward compatibility.
 
 **IMPORTANT**: MyGo is NOT SOAP. It uses plain HTTP POST with custom XML to `https://admin.mygo.co/api/hotel/{ServiceName}`.
 
 ## Architecture
 
-- **Supabase Edge Functions** (Deno + TypeScript)
+### Cloudflare Worker (Primary)
+- **Runtime**: Cloudflare Workers with Hono framework
+- **Entry Point**: `src/index.ts`
+- **Routes**: `/auth`, `/profile`, `/static`, `/hotels`, `/bookings`, `/checkout`, `/payments`, `/api/admin`, `/version`, `/health`
+- **Deployment**: `api.hotel.com.tn/*`
+
+### Supabase (Database + Legacy Functions)
+- **Supabase Edge Functions** (Deno + TypeScript) — Legacy endpoints
 - **Supabase Postgres** for data storage
 - **MyGo XML API** for hotel search and booking
 
@@ -17,8 +28,52 @@ This project implements a Supabase Edge Functions backend for hotel bookings usi
 
 - 📋 [Development Guide](docs/DEVELOPMENT.md) — architecture, deployment audit, security, go-live checklists
 - 📝 [Project Thread](docs/THREAD.md) — current objectives and PR strategy
+- 📚 [API Reference](docs/API_REFERENCE.md) — complete Cloudflare Worker API documentation
 
-## Edge Functions
+## Cloudflare Worker API
+
+The primary API runs on Cloudflare Workers at `https://api.hotel.com.tn`. See [API Reference](docs/API_REFERENCE.md) for complete documentation.
+
+### Health Check
+
+**Endpoint**: `GET /health`
+
+**Authentication**: None (public endpoint)
+
+**Example**:
+```bash
+curl https://api.hotel.com.tn/health
+```
+
+**Response**:
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-02-09T12:00:00.000Z"
+}
+```
+
+### Version Information
+
+**Endpoint**: `GET /version`
+
+**Authentication**: None (public endpoint)
+
+**Example**:
+```bash
+curl https://api.hotel.com.tn/version
+```
+
+**Response**:
+```json
+{
+  "sha": "abc123def456...",
+  "builtAt": "2026-02-08T12:00:00Z",
+  "env": "production"
+}
+```
+
+## Supabase Edge Functions (Legacy)
 
 ### 1. inventory-sync (PRIVATE/Admin)
 
@@ -79,7 +134,7 @@ Searches for available hotels using MyGo HotelSearch API.
 **Authentication**: None (public endpoint)
 
 **Security**:
-- CORS restricted to `https://www.hotel.com.tn` and `http://localhost:5173`
+- CORS restricted to `https://www.hotel.com.tn`, `https://admin.hotel.com.tn`, and `http://localhost:5173`
 - Rate limited: 60 requests/hour per IP (using hashed IP addresses for privacy)
 - Cached responses: 120 seconds TTL (cache is token-free)
 - Returns visible inventory (Available/onRequest flags preserved for frontend)
@@ -269,7 +324,10 @@ MYGO_PASSWORD=your-mygo-password
 - ✅ **NEW (PR13)**: Search token never sent to client or cached
 - ✅ Token hashing (SHA-256) before database storage
 - ✅ Rate limiting on public endpoints (60/hour per IP with hashed storage)
-- ✅ CORS allowlist enforcement (`https://www.hotel.com.tn`, `http://localhost:5173`)
+- ✅ CORS allowlist enforcement:
+  - **Public website**: `https://www.hotel.com.tn`
+  - **Admin portal**: `https://admin.hotel.com.tn`
+  - **Local development**: `http://localhost:5173`
 - ✅ JWT authentication for private endpoints
 - ✅ Unified authentication middleware with admin checks
 - ✅ Input validation and sanitization
