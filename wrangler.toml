@@ -25,7 +25,7 @@ workers_dev = false
 # - SUPABASE_URL: Supabase project URL
 # - SUPABASE_SERVICE_ROLE_KEY: Supabase service role key for backend operations
 # - SUPABASE_ANON_KEY: Supabase anonymous key for public operations
-# - SUPABASE_JWT_SECRET: JWT secret for token verification
+# - JWT_SECRET: JWT secret for token verification (renamed from SUPABASE_JWT_SECRET due to Cloudflare restrictions)
 # - CLICTOPAY_USERNAME: ClicToPay API username
 # - CLICTOPAY_PASSWORD: ClicToPay API password
 # - CLICTOPAY_SECRET: ClicToPay HMAC secret for callback verification
