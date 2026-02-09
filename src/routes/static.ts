@@ -17,6 +17,8 @@ import {
 import type { MyGoCredential } from "../types/mygo";
 import { createLogger } from "../utils/logger";
 import { ExternalServiceError } from "../middleware/errorHandler";
+import { getCachedCities, setCachedCities } from "../cache/citiesCache";
+import { DEFAULT_TUNISIAN_CITIES } from "../data/defaultCities";
 
 const static_routes = new Hono<{ Bindings: Env; Variables: HonoVariables }>();
 
@@ -32,28 +34,41 @@ const getMyGoCredential = (env: Env): MyGoCredential => ({
 });
 
 /**
+ * Helper to build ETag from cities list
+ */
+const buildCitiesETag = (cities: Array<{ id: number; name: string; region: string | null }>): string => {
+  const firstId = cities.length > 0 ? cities[0].id : 0;
+  const lastId = cities.length > 0 ? cities[cities.length - 1].id : 0;
+  return `"cities-${cities.length}-${firstId}-${lastId}"`;
+};
+
+/**
  * GET /static/cities
  * Get list of cities from myGO — public, cached, GET-friendly endpoint
- * Response: { items: [...], source: "mygo", cached: boolean, fetchedAt: string }
+ * Response: { items: [...], source: "mygo"|"default", cached: boolean, fetchedAt: string }
+ * 
+ * Strategy:
+ * 1. Check in-memory cache → if fresh, return immediately
+ * 2. Try fetching from myGO API
+ * 3. On failure, check for stale cache → if exists, return it
+ * 4. Ultimate fallback → return DEFAULT_TUNISIAN_CITIES
  */
 static_routes.get("/cities", async (c) => {
   const logger = createLogger(c.var);
   const startTime = Date.now();
   logger.info("Fetching cities list (GET)");
 
-  try {
-    const credential = getMyGoCredential(c.env);
-    const cities = await listCities(credential);
+  // Step 1: Check fresh cache
+  const cachedData = getCachedCities();
+  if (cachedData && !cachedData.stale) {
     const durationMs = Date.now() - startTime;
+    logger.info("Serving cities from fresh cache", {
+      count: cachedData.cities.length,
+      durationMs,
+    });
 
-    logger.info("Cities fetched", { count: cities.length, durationMs });
+    const etag = buildCitiesETag(cachedData.cities);
 
-    // Build ETag from count + first/last city id for lightweight cache validation
-    const firstId = cities.length > 0 ? cities[0].id : 0;
-    const lastId = cities.length > 0 ? cities[cities.length - 1].id : 0;
-    const etag = `"cities-${cities.length}-${firstId}-${lastId}"`;
-
-    // Check If-None-Match
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
       return c.body(null, 304);
@@ -61,13 +76,49 @@ static_routes.get("/cities", async (c) => {
 
     return c.json(
       {
-        items: cities.map((city) => ({
-          id: city.id,
-          name: city.name,
-          region: city.region ?? null,
-        })),
+        items: cachedData.cities,
         source: "mygo",
-        cached: false, // Always false; reserved for future server-side cache implementation
+        cached: true,
+        fetchedAt: cachedData.fetchedAt,
+      },
+      200,
+      {
+        "Cache-Control": CACHE_HEADER,
+        "ETag": etag,
+      }
+    );
+  }
+
+  // Step 2: Try fetching from myGO
+  try {
+    const credential = getMyGoCredential(c.env);
+    const cities = await listCities(credential);
+    const durationMs = Date.now() - startTime;
+
+    logger.info("Cities fetched from myGO", { count: cities.length, durationMs });
+
+    // Normalize cities to ensure region is string | null
+    const normalizedCities = cities.map((city) => ({
+      id: city.id,
+      name: city.name,
+      region: city.region ?? null,
+    }));
+
+    // Update cache
+    setCachedCities(normalizedCities);
+
+    const etag = buildCitiesETag(normalizedCities);
+
+    const ifNoneMatch = c.req.header("If-None-Match");
+    if (ifNoneMatch === etag) {
+      return c.body(null, 304);
+    }
+
+    return c.json(
+      {
+        items: normalizedCities,
+        source: "mygo",
+        cached: false,
         fetchedAt: new Date().toISOString(),
       },
       200,
@@ -78,36 +129,157 @@ static_routes.get("/cities", async (c) => {
     );
   } catch (error) {
     const durationMs = Date.now() - startTime;
-    logger.error("Failed to fetch cities (GET)", {
+    logger.warn("Failed to fetch cities from myGO", {
       error: error instanceof Error ? error.message : String(error),
       durationMs,
     });
-    throw new ExternalServiceError("Failed to fetch cities from myGO", "MyGO");
+
+    // Step 3: Fall back to stale cache if available
+    if (cachedData && cachedData.stale) {
+      logger.warn("Serving stale cached cities as fallback", {
+        count: cachedData.cities.length,
+        age: Date.now() - new Date(cachedData.fetchedAt).getTime(),
+      });
+
+      const etag = buildCitiesETag(cachedData.cities);
+
+      const ifNoneMatch = c.req.header("If-None-Match");
+      if (ifNoneMatch === etag) {
+        return c.body(null, 304);
+      }
+
+      return c.json(
+        {
+          items: cachedData.cities,
+          source: "mygo",
+          cached: true,
+          fetchedAt: cachedData.fetchedAt,
+        },
+        200,
+        {
+          "Cache-Control": CACHE_HEADER,
+          "ETag": etag,
+        }
+      );
+    }
+
+    // Step 4: Ultimate fallback - return default cities
+    logger.warn("No cache available, serving default Tunisian cities", {
+      count: DEFAULT_TUNISIAN_CITIES.length,
+    });
+
+    const etag = buildCitiesETag(DEFAULT_TUNISIAN_CITIES);
+
+    const ifNoneMatch = c.req.header("If-None-Match");
+    if (ifNoneMatch === etag) {
+      return c.body(null, 304);
+    }
+
+    return c.json(
+      {
+        items: DEFAULT_TUNISIAN_CITIES,
+        source: "default",
+        cached: false,
+        fetchedAt: new Date().toISOString(),
+      },
+      200,
+      {
+        "Cache-Control": CACHE_HEADER,
+        "ETag": etag,
+      }
+    );
   }
 });
 
 /**
  * POST /static/list-city
  * Get list of cities from myGO with caching
+ * Response: { cities: [...] }
+ * 
+ * Strategy (same as GET):
+ * 1. Check in-memory cache → if fresh, return immediately
+ * 2. Try fetching from myGO API
+ * 3. On failure, check for stale cache → if exists, return it
+ * 4. Ultimate fallback → return DEFAULT_TUNISIAN_CITIES
  */
 static_routes.post("/list-city", async (c) => {
   const logger = createLogger(c.var);
-  logger.info("Fetching cities list");
+  const startTime = Date.now();
+  logger.info("Fetching cities list (POST)");
 
+  // Step 1: Check fresh cache
+  const cachedData = getCachedCities();
+  if (cachedData && !cachedData.stale) {
+    const durationMs = Date.now() - startTime;
+    logger.info("Serving cities from fresh cache (POST)", {
+      count: cachedData.cities.length,
+      durationMs,
+    });
+
+    return c.json(
+      { cities: cachedData.cities },
+      200,
+      { "Cache-Control": CACHE_HEADER }
+    );
+  }
+
+  // Step 2: Try fetching from myGO
   try {
     const credential = getMyGoCredential(c.env);
     const cities = await listCities(credential);
+    const durationMs = Date.now() - startTime;
 
-    logger.info("Cities list fetched successfully", { count: cities.length });
+    logger.info("Cities list fetched successfully from myGO (POST)", {
+      count: cities.length,
+      durationMs,
+    });
+
+    // Normalize cities to ensure region is string | null
+    const normalizedCities = cities.map((city) => ({
+      id: city.id,
+      name: city.name,
+      region: city.region ?? null,
+    }));
+
+    // Update cache
+    setCachedCities(normalizedCities);
 
     return c.json(
-      { cities },
+      { cities: normalizedCities },
       200,
       { "Cache-Control": CACHE_HEADER }
     );
   } catch (error) {
-    logger.error("Failed to fetch cities", { error: error instanceof Error ? error.message : String(error) });
-    throw new ExternalServiceError("Failed to fetch cities from myGO", "MyGO");
+    const durationMs = Date.now() - startTime;
+    logger.warn("Failed to fetch cities from myGO (POST)", {
+      error: error instanceof Error ? error.message : String(error),
+      durationMs,
+    });
+
+    // Step 3: Fall back to stale cache if available
+    if (cachedData && cachedData.stale) {
+      logger.warn("Serving stale cached cities as fallback (POST)", {
+        count: cachedData.cities.length,
+        age: Date.now() - new Date(cachedData.fetchedAt).getTime(),
+      });
+
+      return c.json(
+        { cities: cachedData.cities },
+        200,
+        { "Cache-Control": CACHE_HEADER }
+      );
+    }
+
+    // Step 4: Ultimate fallback - return default cities
+    logger.warn("No cache available, serving default Tunisian cities (POST)", {
+      count: DEFAULT_TUNISIAN_CITIES.length,
+    });
+
+    return c.json(
+      { cities: DEFAULT_TUNISIAN_CITIES },
+      200,
+      { "Cache-Control": CACHE_HEADER }
+    );
   }
 });
 
