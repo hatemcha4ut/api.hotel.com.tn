@@ -1,6 +1,6 @@
 name = "api-hotel-com-tn"
 main = "src/index.ts"
-compatibility_date = "2024-01-01"
+compatibility_date = "2025-01-01"
 
 # Cloudflare Worker configuration for api.hotel.com.tn
 # This replaces Supabase Edge Functions as the primary API backend
@@ -30,6 +30,8 @@ workers_dev = false
 # - CLICTOPAY_PASSWORD: ClicToPay API password
 # - CLICTOPAY_SECRET: ClicToPay HMAC secret for callback verification
 # - ALLOWED_ORIGINS: Comma-separated list of allowed CORS origins
+#     Example: "https://www.hotel.com.tn,https://admin.hotel.com.tn,http://localhost:5173"
+#     MUST include https://admin.hotel.com.tn for admin portal access
 # - HOTEL_UPSTREAM_BASE_URL: Optional upstream URL (if needed)
 # - GITHUB_SHA: Git commit SHA (injected at build time)
 # - BUILT_AT: Build timestamp (injected at build time)
