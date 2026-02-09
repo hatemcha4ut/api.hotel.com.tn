@@ -566,7 +566,7 @@ All environment variables are configured as Cloudflare Worker secrets (never com
 - `SUPABASE_URL` - Supabase project URL
 - `SUPABASE_SERVICE_ROLE_KEY` - Backend service role key
 - `SUPABASE_ANON_KEY` - Public anonymous key
-- `SUPABASE_JWT_SECRET` - JWT verification secret
+- `JWT_SECRET` - JWT verification secret (renamed from SUPABASE_JWT_SECRET due to Cloudflare restrictions)
 - `CLICTOPAY_USERNAME` - ClicToPay API username
 - `CLICTOPAY_PASSWORD` - ClicToPay API password
 - `CLICTOPAY_SECRET` - HMAC secret for callback verification

@@ -11,7 +11,8 @@ export interface Env {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   SUPABASE_ANON_KEY: string;
-  SUPABASE_JWT_SECRET: string;
+  // JWT secret (renamed from SUPABASE_JWT_SECRET - Cloudflare does not allow SUPABASE_ prefix for secrets)
+  JWT_SECRET: string;
 
   // ClicToPay credentials
   CLICTOPAY_USERNAME: string;
