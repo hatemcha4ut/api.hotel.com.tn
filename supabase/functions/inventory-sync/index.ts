@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 // import { requireAdmin } from "../_shared/auth.ts";
-import { jsonResponse } from "../_shared/cors.ts";
+import { handleOptions, isOriginAllowed, jsonResponse } from "../_shared/cors.ts";
 import { formatError, ValidationError } from "../_shared/errors.ts";
 import { createSupplierClient } from "../_shared/suppliers/currentSupplierAdapter.ts";
 import {
@@ -232,8 +232,20 @@ const diagnoseMygo = async () => {
 };
 
 serve(async (request) => {
+  const origin = request.headers.get("Origin") ?? "";
+
+  // Check origin
+  if (origin && !isOriginAllowed(origin)) {
+    return jsonResponse({ error: "Origin not allowed" }, 403);
+  }
+
+  // Handle OPTIONS preflight
+  if (request.method === "OPTIONS") {
+    return handleOptions(origin);
+  }
+
   if (request.method !== "POST") {
-    return jsonResponse({ error: "Method not allowed" }, 405);
+    return jsonResponse({ error: "Method not allowed" }, 405, origin);
   }
 
   try {
@@ -278,6 +290,7 @@ serve(async (request) => {
             ...result,
           },
           200,
+          origin,
         );
       }
       case "hotels": {
@@ -293,6 +306,7 @@ serve(async (request) => {
             ...result,
           },
           200,
+          origin,
         );
       }
       case "search": {
@@ -308,6 +322,7 @@ serve(async (request) => {
           return jsonResponse(
             { success: false, action: "search", error: message },
             400,
+            origin,
           );
         }
         return jsonResponse(
@@ -318,6 +333,7 @@ serve(async (request) => {
             ...result,
           },
           200,
+          origin,
         );
       }
       case "booking": {
@@ -333,6 +349,7 @@ serve(async (request) => {
             ...result,
           },
           200,
+          origin,
         );
       }
       case "mygo_diagnose": {
@@ -344,6 +361,7 @@ serve(async (request) => {
             ...result,
           },
           200,
+          origin,
         );
       }
       case "mygo_selftest": {
@@ -384,6 +402,7 @@ serve(async (request) => {
             hotelCount: hotels.length,
           },
           200,
+          origin,
         );
       }
       default:
@@ -397,6 +416,6 @@ serve(async (request) => {
     const errorResponse = formatError(error);
     const statusCode = error instanceof ValidationError ? 400 : 500;
 
-    return jsonResponse(errorResponse, statusCode);
+    return jsonResponse(errorResponse, statusCode, origin);
   }
 });
