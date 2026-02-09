@@ -34,6 +34,15 @@ const getMyGoCredential = (env: Env): MyGoCredential => ({
 });
 
 /**
+ * Helper to build ETag from cities list
+ */
+const buildCitiesETag = (cities: Array<{ id: number; name: string; region: string | null }>): string => {
+  const firstId = cities.length > 0 ? cities[0].id : 0;
+  const lastId = cities.length > 0 ? cities[cities.length - 1].id : 0;
+  return `"cities-${cities.length}-${firstId}-${lastId}"`;
+};
+
+/**
  * GET /static/cities
  * Get list of cities from myGO — public, cached, GET-friendly endpoint
  * Response: { items: [...], source: "mygo"|"default", cached: boolean, fetchedAt: string }
@@ -58,9 +67,7 @@ static_routes.get("/cities", async (c) => {
       durationMs,
     });
 
-    const firstId = cachedData.cities.length > 0 ? cachedData.cities[0].id : 0;
-    const lastId = cachedData.cities.length > 0 ? cachedData.cities[cachedData.cities.length - 1].id : 0;
-    const etag = `"cities-${cachedData.cities.length}-${firstId}-${lastId}"`;
+    const etag = buildCitiesETag(cachedData.cities);
 
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
@@ -100,9 +107,7 @@ static_routes.get("/cities", async (c) => {
     // Update cache
     setCachedCities(normalizedCities);
 
-    const firstId = normalizedCities.length > 0 ? normalizedCities[0].id : 0;
-    const lastId = normalizedCities.length > 0 ? normalizedCities[normalizedCities.length - 1].id : 0;
-    const etag = `"cities-${normalizedCities.length}-${firstId}-${lastId}"`;
+    const etag = buildCitiesETag(normalizedCities);
 
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
@@ -136,9 +141,7 @@ static_routes.get("/cities", async (c) => {
         age: Date.now() - new Date(cachedData.fetchedAt).getTime(),
       });
 
-      const firstId = cachedData.cities.length > 0 ? cachedData.cities[0].id : 0;
-      const lastId = cachedData.cities.length > 0 ? cachedData.cities[cachedData.cities.length - 1].id : 0;
-      const etag = `"cities-${cachedData.cities.length}-${firstId}-${lastId}"`;
+      const etag = buildCitiesETag(cachedData.cities);
 
       const ifNoneMatch = c.req.header("If-None-Match");
       if (ifNoneMatch === etag) {
@@ -165,9 +168,7 @@ static_routes.get("/cities", async (c) => {
       count: DEFAULT_TUNISIAN_CITIES.length,
     });
 
-    const firstId = DEFAULT_TUNISIAN_CITIES.length > 0 ? DEFAULT_TUNISIAN_CITIES[0].id : 0;
-    const lastId = DEFAULT_TUNISIAN_CITIES.length > 0 ? DEFAULT_TUNISIAN_CITIES[DEFAULT_TUNISIAN_CITIES.length - 1].id : 0;
-    const etag = `"cities-${DEFAULT_TUNISIAN_CITIES.length}-${firstId}-${lastId}"`;
+    const etag = buildCitiesETag(DEFAULT_TUNISIAN_CITIES);
 
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
