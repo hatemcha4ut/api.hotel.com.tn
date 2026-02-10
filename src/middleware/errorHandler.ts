@@ -68,7 +68,7 @@ export class InsufficientCreditError extends AppError {
  * Error handler middleware
  */
 export const errorHandler = () => {
-  return async (c: Context<{ Variables: HonoVariables }>, err: Error) => {
+  return async (err: Error, c: Context<{ Bindings: any; Variables: HonoVariables }>) => {
     const logger = createLogger(c.var);
 
     // Handle Zod validation errors
