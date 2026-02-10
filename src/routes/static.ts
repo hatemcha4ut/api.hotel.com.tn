@@ -26,8 +26,18 @@ const static_routes = new Hono<{ Bindings: Env; Variables: HonoVariables }>();
 const CACHE_HEADER = "public, max-age=3600";
 
 /**
+ * Custom error for missing MyGO credentials
+ */
+class MissingCredentialsError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MissingCredentialsError";
+  }
+}
+
+/**
  * Helper to create MyGO credential from environment
- * @throws Error if credentials are missing or invalid
+ * @throws MissingCredentialsError if credentials are missing or invalid
  */
 const getMyGoCredential = (env: Env): MyGoCredential => {
   const login = env.MYGO_LOGIN;
@@ -37,7 +47,7 @@ const getMyGoCredential = (env: Env): MyGoCredential => {
     const missing = [];
     if (!login) missing.push("MYGO_LOGIN");
     if (!password) missing.push("MYGO_PASSWORD");
-    throw new Error(`Missing MyGO credentials: ${missing.join(", ")}`);
+    throw new MissingCredentialsError(`Missing MyGO credentials: ${missing.join(", ")}`);
   }
 
   return { login, password };
@@ -145,7 +155,7 @@ static_routes.get("/cities", async (c) => {
   } catch (error) {
     const durationMs = Date.now() - startTime;
     const errorMessage = error instanceof Error ? error.message : String(error);
-    const isMissingCredentials = errorMessage.includes("Missing MyGO credentials");
+    const isMissingCredentials = error instanceof MissingCredentialsError;
     
     logger.warn("Failed to fetch cities from myGO", {
       error: errorMessage,
@@ -282,7 +292,7 @@ static_routes.post("/list-city", async (c) => {
   } catch (error) {
     const durationMs = Date.now() - startTime;
     const errorMessage = error instanceof Error ? error.message : String(error);
-    const isMissingCredentials = errorMessage.includes("Missing MyGO credentials");
+    const isMissingCredentials = error instanceof MissingCredentialsError;
     
     logger.warn("Failed to fetch cities from myGO (POST)", {
       error: errorMessage,
