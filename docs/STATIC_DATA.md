@@ -47,7 +47,7 @@ Public endpoint to retrieve the list of cities available for hotel search.
 
 ### Caching
 
-The endpoint implements a three-layer caching strategy for maximum reliability:
+The endpoint implements multiple caching layers for maximum reliability:
 
 1. **In-Memory Cache** (Cloudflare Worker):
    - TTL: 10 minutes
@@ -63,6 +63,8 @@ The endpoint implements a three-layer caching strategy for maximum reliability:
    - Each response includes an `ETag` header computed from city count and IDs
    - Clients can send `If-None-Match: <etag>` header in subsequent requests
    - When data hasn't changed, server responds with `304 Not Modified` (empty body)
+
+See the **Fallback Strategy** section below for how these layers work together with the default cities fallback.
 
 #### Example with ETag
 

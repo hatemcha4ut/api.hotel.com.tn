@@ -115,12 +115,7 @@ static_routes.get("/cities", async (c) => {
     const cities = await listCities(credential);
     const durationMs = Date.now() - startTime;
 
-    logger.info("Cities fetched from myGO", { 
-      count: cities.length, 
-      durationMs,
-      source: "mygo",
-      cached: false,
-    });
+    logger.info("Cities fetched from myGO", { count: cities.length, durationMs, source: "mygo", cached: false });
 
     // Normalize cities to ensure region is string | null
     const normalizedCities = cities.map((city) => ({
@@ -267,12 +262,7 @@ static_routes.post("/list-city", async (c) => {
     const cities = await listCities(credential);
     const durationMs = Date.now() - startTime;
 
-    logger.info("Cities list fetched successfully from myGO (POST)", {
-      count: cities.length,
-      durationMs,
-      source: "mygo",
-      cached: false,
-    });
+    logger.info("Cities list fetched successfully from myGO (POST)", { count: cities.length, durationMs, source: "mygo", cached: false });
 
     // Normalize cities to ensure region is string | null
     const normalizedCities = cities.map((city) => ({
