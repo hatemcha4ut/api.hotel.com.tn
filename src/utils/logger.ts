@@ -125,10 +125,11 @@ export class Logger {
 
 /**
  * Create logger from Hono context
+ * Accepts optional variables and provides safe fallbacks when undefined
  */
-export const createLogger = (variables: HonoVariables): Logger => {
+export const createLogger = (variables?: HonoVariables): Logger => {
   return new Logger({
-    requestId: variables.requestId,
-    userId: variables.userId,
+    requestId: variables?.requestId,
+    userId: variables?.userId,
   });
 };
