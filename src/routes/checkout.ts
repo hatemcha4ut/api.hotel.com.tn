@@ -179,14 +179,21 @@ checkout.post("/initiate", async (c) => {
     // Create ClicToPay pre-authorization order
     logger.info("Creating ClicToPay pre-authorization");
     const isTestMode = c.env.PAYMENT_TEST_MODE === "true";
-    const clictopay = createClicToPayClient(
-      {
-        username: c.env.CLICTOPAY_USERNAME,
-        password: c.env.CLICTOPAY_PASSWORD,
-        secret: c.env.CLICTOPAY_SECRET,
-      },
-      isTestMode,
-    );
+    
+    // In test mode, use placeholder credentials to avoid exposing production secrets
+    const clictopayCredentials = isTestMode
+      ? {
+          username: "test-mode",
+          password: "test-mode",
+          secret: "test-mode",
+        }
+      : {
+          username: c.env.CLICTOPAY_USERNAME,
+          password: c.env.CLICTOPAY_PASSWORD,
+          secret: c.env.CLICTOPAY_SECRET,
+        };
+    
+    const clictopay = createClicToPayClient(clictopayCredentials, isTestMode);
 
     logger.info("ClicToPay client initialized", {
       testMode: isTestMode,

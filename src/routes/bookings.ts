@@ -84,9 +84,8 @@ bookings.post("/prebook", async (c) => {
     // Store pre-booking in database
     const supabase = createServiceClient(c.env);
     
-    // Determine booking status based on myGO state
-    // OnRequest bookings should be pending until confirmed or credit is topped up
-    const bookingStatus = bookingResult.state === "OnRequest" ? "pending" : "pending";
+    // Pre-bookings are always pending, regardless of myGO state
+    const bookingStatus = "pending";
     
     const bookingData = {
       user_id: userId || null,
@@ -111,7 +110,7 @@ bookings.post("/prebook", async (c) => {
       customer_phone: validatedData.customer.phone,
     };
 
-    logger.info("Storing booking in database", {
+    logger.info("Storing pre-booking in database", {
       mygoState: bookingResult.state,
       status: bookingStatus,
       isOnRequest: bookingResult.state === "OnRequest",
@@ -199,9 +198,9 @@ bookings.post("/create", async (c) => {
     // Store booking in database
     const supabase = createServiceClient(c.env);
     
-    // Determine booking status based on myGO state
-    // OnRequest bookings should be pending until confirmed or credit is topped up
-    // For confirmed bookings (preBooking=false), status is "confirmed" unless OnRequest
+    // For confirmed bookings (preBooking=false):
+    // - Status is "confirmed" if booking is immediately confirmed by MyGO
+    // - Status is "pending" if MyGO returns OnRequest state (requires manual confirmation or credit top-up)
     const bookingStatus = bookingResult.state === "OnRequest" ? "pending" : "confirmed";
     
     const bookingData = {
@@ -227,7 +226,7 @@ bookings.post("/create", async (c) => {
       customer_phone: validatedData.customer.phone,
     };
 
-    logger.info("Storing booking in database", {
+    logger.info("Storing confirmed booking in database", {
       mygoState: bookingResult.state,
       status: bookingStatus,
       isOnRequest: bookingResult.state === "OnRequest",

@@ -144,8 +144,10 @@ export const registerPreAuth = async (
   testMode = false,
 ): Promise<ClicToPayPreAuthResponse> => {
   // In test mode, return deterministic mock response
+  // Note: Mock IDs use timestamp + random string for uniqueness in testing
+  // This is acceptable for test-only scenarios but should not be used in production
   if (testMode) {
-    const mockOrderId = `TEST-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const mockOrderId = `TEST-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
     return {
       orderId: mockOrderId,
       formUrl: `https://test.clictopay.com/payment/form/${mockOrderId}`,
