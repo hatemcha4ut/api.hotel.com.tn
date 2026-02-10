@@ -463,7 +463,7 @@ Retrieves booking details and consolidated status.
 
 #### `POST /checkout/initiate`
 
-Initiates checkout flow with CreditCheck and ClicToPay pre-authorization.
+Initiates checkout flow with policy enforcement, credit check, and ClicToPay pre-authorization.
 
 **Request:**
 ```json
@@ -474,21 +474,54 @@ Initiates checkout flow with CreditCheck and ClicToPay pre-authorization.
 }
 ```
 
-**Response:**
+**Response - Success (Credit Sufficient):**
 ```json
 {
+  "blocked": false,
   "orderId": "ORD123456",
+  "orderNumber": "BK-550e8400-1707428400000",
   "formUrl": "https://test.clictopay.com/payment/form?orderId=...",
-  "orderNumber": "booking-550e8400"
+  "paymentId": "pay_550e8400-e29b-41d4-a716-446655440001",
+  "checkoutPolicy": "STRICT"
+}
+```
+
+**Response - Blocked (Insufficient Wallet Credit):**
+```json
+{
+  "blocked": true,
+  "reason": "wallet_insufficient",
+  "message": "Insufficient MyGO wallet credit. Required: 250.00 TND, Available: 100.00 TND",
+  "requiredAmount": 250.00,
+  "availableCredit": 100.00,
+  "deficit": 150.00,
+  "checkoutPolicy": "STRICT",
+  "bookingId": "550e8400-e29b-41d4-a716-446655440000",
+  "bookingStatus": "pending",
+  "mygoState": "OnRequest"
 }
 ```
 
 **Flow**:
-1. Reads checkout policy from `settings` table
-2. Calls myGO CreditCheck
-3. If STRICT mode: validates RemainingDeposit >= totalPrice
-4. Creates ClicToPay pre-authorization
-5. Returns payment form URL
+1. Reads checkout policy from `settings` table (`STRICT` or `ON_HOLD_PREAUTH`)
+2. Verifies booking exists and is accessible by user
+3. If **STRICT** policy:
+   - Performs myGO credit check
+   - If wallet credit < booking amount:
+     - Updates booking to `mygo_state: "OnRequest"` and `status: "pending"`
+     - Returns `blocked: true` response with `reason: "wallet_insufficient"`
+     - No payment pre-authorization is created
+   - If wallet credit >= booking amount: proceeds to payment
+4. If **ON_HOLD_PREAUTH** policy: skips credit check, proceeds directly to payment
+5. Creates ClicToPay pre-authorization order
+6. Returns payment form URL for customer
+
+**Checkout Policies**:
+- `STRICT`: Requires sufficient MyGO wallet credit before allowing checkout. Treats bookings like OnRequest when credit is insufficient.
+- `ON_HOLD_PREAUTH`: Allows checkout without credit check. Pre-authorization holds funds until booking is confirmed.
+
+**Payment Test Mode**:
+When `PAYMENT_TEST_MODE` environment variable is set to `"true"`, the system returns deterministic mock payment responses without calling the real payment provider. This is useful for testing without exposing production payment credentials.
 
 ### Payment Callback
 
@@ -682,6 +715,38 @@ X-RateLimit-Limit: 60
 X-RateLimit-Remaining: 45
 X-RateLimit-Reset: 1707428400
 ```
+
+---
+
+## Environment Configuration
+
+The following environment variables configure the API behavior:
+
+### Payment Configuration
+
+- **`PAYMENT_TEST_MODE`**: When set to `"true"`, enables payment test mode that returns deterministic mock responses without calling the real payment provider (ClicToPay). This is safe for development and testing as it does not expose production payment credentials. Default: `"false"` (production mode).
+
+- **`CLICTOPAY_BASE_URL`**: ClicToPay API base URL. Use `https://test.clictopay.com/payment/rest` for testing or `https://ipay.clictopay.com/payment/rest` for production.
+
+### Checkout Policies
+
+Checkout policies are stored in the database `settings` table under key `"checkout-policy"`:
+
+- **`STRICT`**: Requires sufficient MyGO wallet credit before allowing checkout. If credit is insufficient, treats the booking like OnRequest (status: pending, mygo_state: OnRequest) and returns a blocked response.
+
+- **`ON_HOLD_PREAUTH`**: Allows checkout without credit check. Pre-authorization holds customer funds until booking is confirmed with MyGO.
+
+### MyGO Integration
+
+- **`MYGO_LOGIN`**: MyGO API username
+- **`MYGO_PASSWORD`**: MyGO API password
+
+### Other Configuration
+
+- **`ALLOWED_ORIGINS`**: Comma-separated list of allowed CORS origins (e.g., `"https://www.hotel.com.tn,https://admin.hotel.com.tn,http://localhost:5173"`)
+- **`SUPABASE_URL`**: Supabase project URL
+- **`SUPABASE_SERVICE_ROLE_KEY`**: Supabase service role key
+- **`JWT_SECRET`**: JWT secret for token verification
 
 ---
 

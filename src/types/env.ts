@@ -19,6 +19,9 @@ export interface Env {
   CLICTOPAY_PASSWORD: string;
   CLICTOPAY_SECRET: string;
   CLICTOPAY_BASE_URL?: string; // Optional: defaults to test URL if not provided
+  
+  // Payment test mode (when true, returns mock responses without calling real payment provider)
+  PAYMENT_TEST_MODE?: string; // "true" or "false"
 
   // CORS configuration
   ALLOWED_ORIGINS: string; // Comma-separated list

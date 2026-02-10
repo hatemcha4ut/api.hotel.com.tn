@@ -15,7 +15,6 @@ import {
   ValidationError,
   NotFoundError,
   ExternalServiceError,
-  InsufficientCreditError,
   AuthenticationError,
 } from "../middleware/errorHandler";
 import { optionalAuth } from "../middleware/auth";
@@ -114,33 +113,64 @@ checkout.post("/initiate", async (c) => {
     logger.info("Checkout policy determined", { policy: checkoutPolicy });
 
     // If STRICT policy, perform credit check with myGO
+    let remainingCredit = 0;
     if (checkoutPolicy === "STRICT") {
-      logger.info("Performing credit check (STRICT policy)");
+      logger.info("Performing credit check (STRICT policy)", {
+        bookingId: booking.id,
+        requiredAmount: booking.total_price,
+      });
       try {
         const credential = getMyGoCredential(c.env);
         const creditCheckResult = await creditCheck(credential);
 
-        const remainingCredit = (creditCheckResult as { remainingDeposit?: number }).remainingDeposit || 0;
-        logger.info("Credit check result", {
+        remainingCredit = (creditCheckResult as { remainingDeposit?: number }).remainingDeposit || 0;
+        logger.info("Credit check completed", {
           remainingCredit,
           required: booking.total_price,
+          sufficient: remainingCredit >= booking.total_price,
         });
 
         if (remainingCredit < booking.total_price) {
-          logger.warn("Insufficient credit for booking", {
+          logger.warn("Insufficient MyGO wallet credit", {
+            bookingId: booking.id,
             required: booking.total_price,
             available: remainingCredit,
+            deficit: booking.total_price - remainingCredit,
+            decision: "blocked_wallet_insufficient",
           });
-          throw new InsufficientCreditError(
-            `Insufficient credit. Required: ${booking.total_price}, Available: ${remainingCredit}`
-          );
+
+          // Update booking to OnRequest state when credit is insufficient
+          await supabase
+            .from("bookings")
+            .update({
+              mygo_state: "OnRequest",
+              status: "pending",
+            })
+            .eq("id", booking.id);
+
+          logger.info("Booking updated to OnRequest state due to insufficient credit", {
+            bookingId: booking.id,
+          });
+
+          // Return blocked response instead of throwing error
+          return c.json({
+            blocked: true,
+            reason: "wallet_insufficient",
+            message: `Insufficient MyGO wallet credit. Required: ${booking.total_price} ${booking.currency}, Available: ${remainingCredit} ${booking.currency}`,
+            requiredAmount: booking.total_price,
+            availableCredit: remainingCredit,
+            deficit: booking.total_price - remainingCredit,
+            checkoutPolicy,
+            bookingId: booking.id,
+            bookingStatus: "pending",
+            mygoState: "OnRequest",
+          });
         }
       } catch (error) {
-        if (error instanceof InsufficientCreditError) {
-          throw error;
-        }
         logger.error("Credit check failed", {
+          bookingId: booking.id,
           error: error instanceof Error ? error.message : String(error),
+          decision: "external_service_error",
         });
         throw new ExternalServiceError("Credit check failed", "MyGO");
       }
@@ -148,10 +178,19 @@ checkout.post("/initiate", async (c) => {
 
     // Create ClicToPay pre-authorization order
     logger.info("Creating ClicToPay pre-authorization");
-    const clictopay = createClicToPayClient({
-      username: c.env.CLICTOPAY_USERNAME,
-      password: c.env.CLICTOPAY_PASSWORD,
-      secret: c.env.CLICTOPAY_SECRET,
+    const isTestMode = c.env.PAYMENT_TEST_MODE === "true";
+    const clictopay = createClicToPayClient(
+      {
+        username: c.env.CLICTOPAY_USERNAME,
+        password: c.env.CLICTOPAY_PASSWORD,
+        secret: c.env.CLICTOPAY_SECRET,
+      },
+      isTestMode,
+    );
+
+    logger.info("ClicToPay client initialized", {
+      testMode: isTestMode,
+      decision: isTestMode ? "using_test_mode" : "using_production_mode",
     });
 
     // Generate unique order number
@@ -175,6 +214,8 @@ checkout.post("/initiate", async (c) => {
     logger.info("ClicToPay pre-auth created", {
       orderId: preAuthResult.orderId,
       orderNumber: preAuthResult.orderNumber,
+      testMode: isTestMode,
+      decision: "payment_initiated_successfully",
     });
 
     // Store payment record in database
@@ -205,6 +246,7 @@ checkout.post("/initiate", async (c) => {
       .eq("id", booking.id);
 
     return c.json({
+      blocked: false,
       orderId: preAuthResult.orderId,
       orderNumber: preAuthResult.orderNumber,
       formUrl: preAuthResult.formUrl,
@@ -214,8 +256,7 @@ checkout.post("/initiate", async (c) => {
   } catch (error) {
     if (
       error instanceof ValidationError ||
-      error instanceof NotFoundError ||
-      error instanceof InsufficientCreditError
+      error instanceof NotFoundError
     ) {
       throw error;
     }

@@ -83,6 +83,11 @@ bookings.post("/prebook", async (c) => {
 
     // Store pre-booking in database
     const supabase = createServiceClient(c.env);
+    
+    // Determine booking status based on myGO state
+    // OnRequest bookings should be pending until confirmed or credit is topped up
+    const bookingStatus = bookingResult.state === "OnRequest" ? "pending" : "pending";
+    
     const bookingData = {
       user_id: userId || null,
       guest_session_id: guestSessionId || null,
@@ -98,13 +103,19 @@ bookings.post("/prebook", async (c) => {
       children: validatedData.rooms.reduce((sum, r) => sum + (r.pax.children?.length || 0), 0),
       total_price: (bookingResult.totalPrice as number) || 0,
       currency: validatedData.currency,
-      status: "pending",
+      status: bookingStatus,
       payment_status: "pending",
       customer_first_name: validatedData.customer.firstName,
       customer_last_name: validatedData.customer.lastName,
       customer_email: validatedData.customer.email,
       customer_phone: validatedData.customer.phone,
     };
+
+    logger.info("Storing booking in database", {
+      mygoState: bookingResult.state,
+      status: bookingStatus,
+      isOnRequest: bookingResult.state === "OnRequest",
+    });
 
     const { data: dbBooking, error: dbError } = await supabase
       .from("bookings")
@@ -187,6 +198,12 @@ bookings.post("/create", async (c) => {
 
     // Store booking in database
     const supabase = createServiceClient(c.env);
+    
+    // Determine booking status based on myGO state
+    // OnRequest bookings should be pending until confirmed or credit is topped up
+    // For confirmed bookings (preBooking=false), status is "confirmed" unless OnRequest
+    const bookingStatus = bookingResult.state === "OnRequest" ? "pending" : "confirmed";
+    
     const bookingData = {
       user_id: userId || null,
       guest_session_id: guestSessionId || null,
@@ -202,13 +219,19 @@ bookings.post("/create", async (c) => {
       children: validatedData.rooms.reduce((sum, r) => sum + (r.pax.children?.length || 0), 0),
       total_price: (bookingResult.totalPrice as number) || 0,
       currency: validatedData.currency,
-      status: "confirmed",
+      status: bookingStatus,
       payment_status: "pending",
       customer_first_name: validatedData.customer.firstName,
       customer_last_name: validatedData.customer.lastName,
       customer_email: validatedData.customer.email,
       customer_phone: validatedData.customer.phone,
     };
+
+    logger.info("Storing booking in database", {
+      mygoState: bookingResult.state,
+      status: bookingStatus,
+      isOnRequest: bookingResult.state === "OnRequest",
+    });
 
     const { data: dbBooking, error: dbError } = await supabase
       .from("bookings")
