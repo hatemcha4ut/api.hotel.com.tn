@@ -26,12 +26,32 @@ const static_routes = new Hono<{ Bindings: Env; Variables: HonoVariables }>();
 const CACHE_HEADER = "public, max-age=3600";
 
 /**
- * Helper to create MyGO credential from environment
+ * Custom error for missing MyGO credentials
  */
-const getMyGoCredential = (env: Env): MyGoCredential => ({
-  login: env.MYGO_LOGIN,
-  password: env.MYGO_PASSWORD,
-});
+class MissingCredentialsError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MissingCredentialsError";
+  }
+}
+
+/**
+ * Helper to create MyGO credential from environment
+ * @throws MissingCredentialsError if credentials are missing or invalid
+ */
+const getMyGoCredential = (env: Env): MyGoCredential => {
+  const login = env.MYGO_LOGIN;
+  const password = env.MYGO_PASSWORD;
+
+  if (!login || !password) {
+    const missing = [];
+    if (!login) missing.push("MYGO_LOGIN");
+    if (!password) missing.push("MYGO_PASSWORD");
+    throw new MissingCredentialsError(`Missing MyGO credentials: ${missing.join(", ")}`);
+  }
+
+  return { login, password };
+};
 
 /**
  * Helper to build ETag from cities list
@@ -95,7 +115,7 @@ static_routes.get("/cities", async (c) => {
     const cities = await listCities(credential);
     const durationMs = Date.now() - startTime;
 
-    logger.info("Cities fetched from myGO", { count: cities.length, durationMs });
+    logger.info("Cities fetched from myGO", { count: cities.length, durationMs, source: "mygo", cached: false });
 
     // Normalize cities to ensure region is string | null
     const normalizedCities = cities.map((city) => ({
@@ -129,16 +149,26 @@ static_routes.get("/cities", async (c) => {
     );
   } catch (error) {
     const durationMs = Date.now() - startTime;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const isMissingCredentials = error instanceof MissingCredentialsError;
+    
     logger.warn("Failed to fetch cities from myGO", {
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
+      errorType: isMissingCredentials ? "missing_credentials" : "api_error",
       durationMs,
+      fallbackStrategy: cachedData?.stale ? "stale_cache" : "default_cities",
     });
 
     // Step 3: Fall back to stale cache if available
     if (cachedData && cachedData.stale) {
+      const cacheAgeMs = Date.now() - new Date(cachedData.fetchedAt).getTime();
       logger.warn("Serving stale cached cities as fallback", {
         count: cachedData.cities.length,
-        age: Date.now() - new Date(cachedData.fetchedAt).getTime(),
+        cacheAgeMs,
+        cacheAgeMinutes: Math.round(cacheAgeMs / 60000),
+        source: "mygo",
+        cached: true,
+        reason: errorMessage,
       });
 
       const etag = buildCitiesETag(cachedData.cities);
@@ -166,6 +196,9 @@ static_routes.get("/cities", async (c) => {
     // Step 4: Ultimate fallback - return default cities
     logger.warn("No cache available, serving default Tunisian cities", {
       count: DEFAULT_TUNISIAN_CITIES.length,
+      source: "default",
+      cached: false,
+      reason: errorMessage,
     });
 
     const etag = buildCitiesETag(DEFAULT_TUNISIAN_CITIES);
@@ -229,10 +262,7 @@ static_routes.post("/list-city", async (c) => {
     const cities = await listCities(credential);
     const durationMs = Date.now() - startTime;
 
-    logger.info("Cities list fetched successfully from myGO (POST)", {
-      count: cities.length,
-      durationMs,
-    });
+    logger.info("Cities list fetched successfully from myGO (POST)", { count: cities.length, durationMs, source: "mygo", cached: false });
 
     // Normalize cities to ensure region is string | null
     const normalizedCities = cities.map((city) => ({
@@ -251,16 +281,26 @@ static_routes.post("/list-city", async (c) => {
     );
   } catch (error) {
     const durationMs = Date.now() - startTime;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const isMissingCredentials = error instanceof MissingCredentialsError;
+    
     logger.warn("Failed to fetch cities from myGO (POST)", {
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
+      errorType: isMissingCredentials ? "missing_credentials" : "api_error",
       durationMs,
+      fallbackStrategy: cachedData?.stale ? "stale_cache" : "default_cities",
     });
 
     // Step 3: Fall back to stale cache if available
     if (cachedData && cachedData.stale) {
+      const cacheAgeMs = Date.now() - new Date(cachedData.fetchedAt).getTime();
       logger.warn("Serving stale cached cities as fallback (POST)", {
         count: cachedData.cities.length,
-        age: Date.now() - new Date(cachedData.fetchedAt).getTime(),
+        cacheAgeMs,
+        cacheAgeMinutes: Math.round(cacheAgeMs / 60000),
+        source: "mygo",
+        cached: true,
+        reason: errorMessage,
       });
 
       return c.json(
@@ -273,6 +313,9 @@ static_routes.post("/list-city", async (c) => {
     // Step 4: Ultimate fallback - return default cities
     logger.warn("No cache available, serving default Tunisian cities (POST)", {
       count: DEFAULT_TUNISIAN_CITIES.length,
+      source: "default",
+      cached: false,
+      reason: errorMessage,
     });
 
     return c.json(

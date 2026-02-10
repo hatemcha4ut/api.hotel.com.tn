@@ -47,16 +47,24 @@ Public endpoint to retrieve the list of cities available for hotel search.
 
 ### Caching
 
-The endpoint implements a two-layer caching strategy:
+The endpoint implements multiple caching layers for maximum reliability:
 
-1. **HTTP Caching**: 
+1. **In-Memory Cache** (Cloudflare Worker):
+   - TTL: 10 minutes
+   - Lives for the lifetime of the worker isolate (short-lived)
+   - Significantly reduces myGO API calls during traffic bursts
+   - Provides stale cache fallback if myGO becomes unavailable
+   
+2. **HTTP Caching**: 
    - `Cache-Control: public, max-age=3600` (1 hour)
    - Responses can be cached by browsers and CDN
    
-2. **ETag Support**:
+3. **ETag Support**:
    - Each response includes an `ETag` header computed from city count and IDs
    - Clients can send `If-None-Match: <etag>` header in subsequent requests
    - When data hasn't changed, server responds with `304 Not Modified` (empty body)
+
+See the **Fallback Strategy** section below for how these layers work together with the default cities fallback.
 
 #### Example with ETag
 
@@ -140,7 +148,63 @@ const searchParams = {
 
 ### Error Responses
 
-Errors follow the standard API error format:
+The endpoint is designed to **always return usable data** by falling back through multiple layers when errors occur:
+
+#### Fallback Strategy
+
+When the myGO API is unavailable or encounters errors, the endpoint follows this fallback chain:
+
+1. **Fresh Cache**: Return cached data if less than 10 minutes old
+2. **MyGO API**: Attempt to fetch fresh data from myGO
+3. **Stale Cache**: If myGO fails, return cached data even if older than 10 minutes
+4. **Default Cities**: If no cache exists, return hardcoded list of 13 major Tunisian cities
+
+This ensures the frontend **never receives an error response** for the cities endpoint.
+
+#### Missing Credentials
+
+If `MYGO_LOGIN` or `MYGO_PASSWORD` environment variables are not configured:
+
+- The endpoint logs a warning with details about which credentials are missing
+- Falls back to cached data (if available) or default cities
+- Returns a successful 200 response with fallback data
+- Logs include `errorType: "missing_credentials"` for monitoring
+
+This graceful degradation ensures the frontend remains functional even during configuration issues.
+
+#### Example Logging
+
+When myGO is down or credentials are missing:
+
+```json
+{
+  "level": "warn",
+  "message": "Failed to fetch cities from myGO",
+  "error": "Missing MyGO credentials: MYGO_LOGIN, MYGO_PASSWORD",
+  "errorType": "missing_credentials",
+  "fallbackStrategy": "default_cities",
+  "durationMs": 5
+}
+```
+
+When serving stale cache:
+
+```json
+{
+  "level": "warn",
+  "message": "Serving stale cached cities as fallback",
+  "count": 42,
+  "cacheAgeMs": 900000,
+  "cacheAgeMinutes": 15,
+  "source": "mygo",
+  "cached": true,
+  "reason": "MyGO API timeout after 30000ms"
+}
+```
+
+#### Standard Error Format
+
+While the endpoint itself never returns errors, other API endpoints follow the standard format:
 
 ```json
 {
@@ -149,7 +213,7 @@ Errors follow the standard API error format:
 }
 ```
 
-Common error scenarios:
+Common error scenarios for other endpoints:
 
 - **503 Service Unavailable**: myGO API is down or unreachable
 - **500 Internal Server Error**: Unexpected error processing the request
