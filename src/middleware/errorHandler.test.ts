@@ -6,7 +6,7 @@ import { describe, it, expect } from "vitest";
 import { Hono } from "hono";
 import type { Env, HonoVariables } from "../types/env";
 import { errorHandler, AppError, ValidationError, AuthenticationError } from "./errorHandler";
-import { ZodError, z } from "zod";
+import { z } from "zod";
 
 describe("Error handler middleware", () => {
   it("should handle ZodError and return 400", async () => {
@@ -24,7 +24,7 @@ describe("Error handler middleware", () => {
     const res = await app.request("/test");
     expect(res.status).toBe(400);
     
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.code).toBe("VALIDATION_ERROR");
     expect(data.error).toBe("Validation error");
   });
@@ -41,7 +41,7 @@ describe("Error handler middleware", () => {
     const res = await app.request("/test");
     expect(res.status).toBe(418);
     
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.code).toBe("CUSTOM_CODE");
     expect(data.error).toBe("Custom error");
   });
@@ -58,7 +58,7 @@ describe("Error handler middleware", () => {
     const res = await app.request("/test");
     expect(res.status).toBe(400);
     
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.code).toBe("VALIDATION_ERROR");
     expect(data.error).toBe("Invalid input");
   });
@@ -75,7 +75,7 @@ describe("Error handler middleware", () => {
     const res = await app.request("/test");
     expect(res.status).toBe(401);
     
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.code).toBe("AUTHENTICATION_ERROR");
     expect(data.error).toBe("Authentication required");
   });
@@ -92,7 +92,7 @@ describe("Error handler middleware", () => {
     const res = await app.request("/test");
     expect(res.status).toBe(500);
     
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.code).toBe("INTERNAL_ERROR");
     expect(data.error).toBe("Internal server error");
   });
@@ -112,7 +112,7 @@ describe("Error handler middleware", () => {
     expect(res.headers.get("content-type")).toContain("application/json");
     expect(res.status).toBe(400);
     
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data).toHaveProperty("error");
     expect(data.error).toBe("Test error");
   });
