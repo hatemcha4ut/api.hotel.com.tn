@@ -141,7 +141,20 @@ const clicToPayRequest = async <T>(
 export const registerPreAuth = async (
   credentials: ClicToPayCredentials,
   request: ClicToPayPreAuthRequest,
+  testMode = false,
 ): Promise<ClicToPayPreAuthResponse> => {
+  // In test mode, return deterministic mock response
+  // Note: Mock IDs use timestamp + random string for uniqueness in testing
+  // This is acceptable for test-only scenarios but should not be used in production
+  if (testMode) {
+    const mockOrderId = `TEST-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+    return {
+      orderId: mockOrderId,
+      formUrl: `https://test.clictopay.com/payment/form/${mockOrderId}`,
+      orderNumber: request.orderNumber,
+    };
+  }
+
   const response = await clicToPayRequest<{
     orderId: string;
     formUrl: string;
@@ -252,10 +265,13 @@ export const reverse = async (
 /**
  * Create ClicToPay client with credentials
  */
-export const createClicToPayClient = (credentials: ClicToPayCredentials) => {
+export const createClicToPayClient = (
+  credentials: ClicToPayCredentials,
+  testMode = false,
+) => {
   return {
     registerPreAuth: (request: ClicToPayPreAuthRequest) =>
-      registerPreAuth(credentials, request),
+      registerPreAuth(credentials, request, testMode),
     getOrderStatus: (request: ClicToPayOrderStatusRequest) =>
       getOrderStatus(credentials, request),
     deposit: (request: ClicToPayDepositRequest) => deposit(credentials, request),

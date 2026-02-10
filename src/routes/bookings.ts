@@ -83,6 +83,10 @@ bookings.post("/prebook", async (c) => {
 
     // Store pre-booking in database
     const supabase = createServiceClient(c.env);
+    
+    // Pre-bookings are always pending, regardless of myGO state
+    const bookingStatus = "pending";
+    
     const bookingData = {
       user_id: userId || null,
       guest_session_id: guestSessionId || null,
@@ -98,13 +102,19 @@ bookings.post("/prebook", async (c) => {
       children: validatedData.rooms.reduce((sum, r) => sum + (r.pax.children?.length || 0), 0),
       total_price: (bookingResult.totalPrice as number) || 0,
       currency: validatedData.currency,
-      status: "pending",
+      status: bookingStatus,
       payment_status: "pending",
       customer_first_name: validatedData.customer.firstName,
       customer_last_name: validatedData.customer.lastName,
       customer_email: validatedData.customer.email,
       customer_phone: validatedData.customer.phone,
     };
+
+    logger.info("Storing pre-booking in database", {
+      mygoState: bookingResult.state,
+      status: bookingStatus,
+      isOnRequest: bookingResult.state === "OnRequest",
+    });
 
     const { data: dbBooking, error: dbError } = await supabase
       .from("bookings")
@@ -187,6 +197,12 @@ bookings.post("/create", async (c) => {
 
     // Store booking in database
     const supabase = createServiceClient(c.env);
+    
+    // For confirmed bookings (preBooking=false):
+    // - Status is "confirmed" if booking is immediately confirmed by MyGO
+    // - Status is "pending" if MyGO returns OnRequest state (requires manual confirmation or credit top-up)
+    const bookingStatus = bookingResult.state === "OnRequest" ? "pending" : "confirmed";
+    
     const bookingData = {
       user_id: userId || null,
       guest_session_id: guestSessionId || null,
@@ -202,13 +218,19 @@ bookings.post("/create", async (c) => {
       children: validatedData.rooms.reduce((sum, r) => sum + (r.pax.children?.length || 0), 0),
       total_price: (bookingResult.totalPrice as number) || 0,
       currency: validatedData.currency,
-      status: "confirmed",
+      status: bookingStatus,
       payment_status: "pending",
       customer_first_name: validatedData.customer.firstName,
       customer_last_name: validatedData.customer.lastName,
       customer_email: validatedData.customer.email,
       customer_phone: validatedData.customer.phone,
     };
+
+    logger.info("Storing confirmed booking in database", {
+      mygoState: bookingResult.state,
+      status: bookingStatus,
+      isOnRequest: bookingResult.state === "OnRequest",
+    });
 
     const { data: dbBooking, error: dbError } = await supabase
       .from("bookings")
