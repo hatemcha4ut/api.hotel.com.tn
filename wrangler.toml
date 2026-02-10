@@ -5,6 +5,9 @@ compatibility_date = "2025-01-01"
 # Cloudflare Worker configuration for api.hotel.com.tn
 # This replaces Supabase Edge Functions as the primary API backend
 
+[observability]
+enabled = true
+
 [env.production]
 name = "api-hotel-com-tn"
 workers_dev = false
@@ -40,9 +43,3 @@ workers_dev = false
 # Build-time variables (set via GitHub Actions)
 [vars]
 ENV = "production"
-
-# Example secrets (DO NOT uncomment with real values):
-# [secrets]
-# MYGO_LOGIN = "your-mygo-username"
-# MYGO_PASSWORD = "your-mygo-password"
-# ...
