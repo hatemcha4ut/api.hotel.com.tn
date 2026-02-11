@@ -96,9 +96,48 @@ export const customerSchema = z.object({
   nationality: z.string().length(2),
 });
 
+// Token-free booking schema: search parameters for server-side token reconstruction
+export const searchParamsSchema = z.object({
+  cityId: z.number().int().positive("cityId must be a positive integer"),
+  checkIn: dateSchema,
+  checkOut: dateSchema,
+  rooms: z.array(roomSchema).min(1).max(10),
+  currency: z.enum(["TND", "EUR", "USD"]).optional(),
+});
+
+// Selected offer from search results (for token-free booking)
+export const selectedOfferSchema = z.object({
+  hotelId: z.number().int().positive("hotelId must be a positive integer"),
+  roomId: z.number().int().positive("roomId must be a positive integer"),
+  boardCode: z.string().optional(),
+  price: z.number().optional(),
+});
+
+// Token-free booking request schema (new approach)
+export const tokenFreeBookingSchema = z.object({
+  preBooking: z.boolean().optional().default(true),
+  searchParams: searchParamsSchema,
+  selectedOffer: selectedOfferSchema,
+  methodPayment: z.string().optional(),
+  options: z
+    .array(
+      z.object({
+        id: z.number().int(),
+        quantity: z.number().int().positive(),
+      })
+    )
+    .optional(),
+  rooms: z.array(bookingRoomSchema),
+  customer: customerSchema,
+});
+
+// Legacy token-based booking schema (for backward compatibility)
 export const bookingCreateSchema = z.object({
   preBooking: z.boolean(),
-  token: z.string().trim().min(1, "Token is required and cannot be empty"),
+  token: z.string().trim().min(1, "Token must not be empty if provided").optional(),
+  // Token-free fields (optional for backward compatibility)
+  searchParams: searchParamsSchema.optional(),
+  selectedOffer: selectedOfferSchema.optional(),
   methodPayment: z.string(),
   currency: z.string(),
   city: z.number().int().positive("City ID must be a positive integer"),
@@ -115,7 +154,18 @@ export const bookingCreateSchema = z.object({
     .optional(),
   rooms: z.array(bookingRoomSchema),
   customer: customerSchema,
-});
+}).refine(
+  (data) => {
+    // Either token OR searchParams + selectedOffer must be provided
+    const hasToken = data.token && data.token.trim().length > 0;
+    const hasSearchParams = data.searchParams !== undefined && data.selectedOffer !== undefined;
+    return hasToken || hasSearchParams;
+  },
+  {
+    message: "Either 'token' or both 'searchParams' and 'selectedOffer' must be provided",
+    path: ["token"],
+  }
+);
 
 // Checkout schema
 export const checkoutInitiateSchema = z.object({
