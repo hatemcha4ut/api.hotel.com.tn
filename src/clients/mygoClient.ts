@@ -28,6 +28,7 @@ const REQUEST_TIMEOUT_MS = 30000; // 30 seconds
 const MAX_RETRIES = 2; // Only for idempotent calls (ListCity, HotelSearch)
 const RETRY_BASE_MS = 1000; // Base delay for exponential backoff
 const RETRY_MAX_MS = 5000; // Maximum retry delay
+const RETRYABLE_STATUS_CODES = [502, 503, 504, 429]; // Gateway errors and rate limit
 
 // XML escaping
 const escapeXml = (value: string): string =>
@@ -691,7 +692,7 @@ export const postJson = async (
         console.error(`[MyGo ${serviceName}] HTTP error ${response.status}:`, errorPreview);
         
         // Retry on 502/503/504 (gateway errors) and 429 (rate limit)
-        if ((response.status === 502 || response.status === 503 || response.status === 504 || response.status === 429) && attempt < maxRetries) {
+        if (RETRYABLE_STATUS_CODES.includes(response.status) && attempt < maxRetries) {
           const backoffMs = Math.min(RETRY_BASE_MS * Math.pow(2, attempt), RETRY_MAX_MS);
           console.log(`[MyGo ${serviceName}] Retryable error ${response.status}, backing off for ${backoffMs}ms`);
           await new Promise((resolve) => setTimeout(resolve, backoffMs));
