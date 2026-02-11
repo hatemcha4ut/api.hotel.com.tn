@@ -814,3 +814,179 @@ describe("Token-Free Booking Schema", () => {
     });
   });
 });
+
+describe("Token-Free Booking - MyGo Validation Errors", () => {
+  // Base fixture for token-free booking tests - reduces code duplication
+  const validTokenFreeBookingBase = {
+    preBooking: true,
+    searchParams: {
+      cityId: 1,
+      checkIn: "2025-03-01",
+      checkOut: "2025-03-05",
+      rooms: [{ adults: 2 }],
+      currency: "TND" as const,
+    },
+    selectedOffer: {
+      hotelId: 100,
+      roomId: 5,
+    },
+    methodPayment: "credit_card",
+    currency: "TND",
+    city: 1,
+    hotel: 100,
+    checkIn: "2025-03-01",
+    checkOut: "2025-03-05",
+    rooms: [
+      {
+        id: 5,
+        boarding: "BB",
+        pax: {
+          adults: [
+            {
+              firstName: "John",
+              lastName: "Doe",
+              nationality: "TN",
+            },
+          ],
+        },
+      },
+    ],
+    customer: {
+      firstName: "John",
+      lastName: "Doe",
+      email: "john@example.com",
+      phone: "+21612345678",
+      nationality: "TN",
+    },
+  };
+
+  describe("Token-free payload with invalid cityId", () => {
+    it("should reject token-free booking with zero cityId", () => {
+      const result = bookingCreateSchema.safeParse({
+        ...validTokenFreeBookingBase,
+        searchParams: {
+          ...validTokenFreeBookingBase.searchParams,
+          cityId: 0, // Invalid
+        },
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        // Should fail on searchParams.cityId validation
+        const cityIdError = result.error.issues.find(
+          (issue) => issue.path.includes("cityId")
+        );
+        expect(cityIdError).toBeDefined();
+        expect(cityIdError?.message).toContain("positive");
+      }
+    });
+
+    it("should reject token-free booking with negative cityId", () => {
+      const result = bookingCreateSchema.safeParse({
+        ...validTokenFreeBookingBase,
+        searchParams: {
+          ...validTokenFreeBookingBase.searchParams,
+          cityId: -5, // Invalid
+        },
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const cityIdError = result.error.issues.find(
+          (issue) => issue.path.includes("cityId")
+        );
+        expect(cityIdError).toBeDefined();
+      }
+    });
+  });
+
+  describe("Token-free payload with invalid hotelId", () => {
+    it("should reject token-free booking with zero hotelId", () => {
+      const result = bookingCreateSchema.safeParse({
+        ...validTokenFreeBookingBase,
+        selectedOffer: {
+          ...validTokenFreeBookingBase.selectedOffer,
+          hotelId: 0, // Invalid
+        },
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const hotelIdError = result.error.issues.find(
+          (issue) => issue.path.includes("hotelId")
+        );
+        expect(hotelIdError).toBeDefined();
+        expect(hotelIdError?.message).toContain("positive");
+      }
+    });
+
+    it("should reject token-free booking with negative roomId in selectedOffer", () => {
+      const result = bookingCreateSchema.safeParse({
+        ...validTokenFreeBookingBase,
+        selectedOffer: {
+          ...validTokenFreeBookingBase.selectedOffer,
+          roomId: -1, // Invalid
+        },
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const roomIdError = result.error.issues.find(
+          (issue) => issue.path.includes("roomId")
+        );
+        expect(roomIdError).toBeDefined();
+      }
+    });
+  });
+
+  describe("Token-free payload with missing required fields", () => {
+    it("should reject token-free booking with missing customer", () => {
+      const { customer, ...requestWithoutCustomer } = validTokenFreeBookingBase;
+      const result = bookingCreateSchema.safeParse(requestWithoutCustomer);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const customerError = result.error.issues.find(
+          (issue) => issue.path.includes("customer")
+        );
+        expect(customerError).toBeDefined();
+      }
+    });
+
+    it("should reject token-free booking with invalid email format", () => {
+      const result = bookingCreateSchema.safeParse({
+        ...validTokenFreeBookingBase,
+        customer: {
+          ...validTokenFreeBookingBase.customer,
+          email: "invalid-email", // Invalid email
+        },
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const emailError = result.error.issues.find(
+          (issue) => issue.path.includes("email")
+        );
+        expect(emailError).toBeDefined();
+      }
+    });
+
+    it("should reject token-free booking with invalid phone format", () => {
+      const result = bookingCreateSchema.safeParse({
+        ...validTokenFreeBookingBase,
+        customer: {
+          ...validTokenFreeBookingBase.customer,
+          phone: "abc", // Invalid phone (not E.164 format)
+        },
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const phoneError = result.error.issues.find(
+          (issue) => issue.path.includes("phone")
+        );
+        expect(phoneError).toBeDefined();
+      }
+    });
+  });
+});
