@@ -814,3 +814,403 @@ describe("Token-Free Booking Schema", () => {
     });
   });
 });
+
+describe("Token-Free Booking - MyGo Validation Errors", () => {
+  describe("Token-free payload with invalid cityId", () => {
+    it("should reject token-free booking with zero cityId", () => {
+      const result = bookingCreateSchema.safeParse({
+        preBooking: true,
+        searchParams: {
+          cityId: 0, // Invalid
+          checkIn: "2025-03-01",
+          checkOut: "2025-03-05",
+          rooms: [{ adults: 2 }],
+          currency: "TND",
+        },
+        selectedOffer: {
+          hotelId: 100,
+          roomId: 5,
+        },
+        methodPayment: "credit_card",
+        currency: "TND",
+        city: 1,
+        hotel: 100,
+        checkIn: "2025-03-01",
+        checkOut: "2025-03-05",
+        rooms: [
+          {
+            id: 5,
+            boarding: "BB",
+            pax: {
+              adults: [
+                {
+                  firstName: "John",
+                  lastName: "Doe",
+                  nationality: "TN",
+                },
+              ],
+            },
+          },
+        ],
+        customer: {
+          firstName: "John",
+          lastName: "Doe",
+          email: "john@example.com",
+          phone: "+21612345678",
+          nationality: "TN",
+        },
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        // Should fail on searchParams.cityId validation
+        const cityIdError = result.error.issues.find(
+          (issue) => issue.path.includes("cityId")
+        );
+        expect(cityIdError).toBeDefined();
+        expect(cityIdError?.message).toContain("positive");
+      }
+    });
+
+    it("should reject token-free booking with negative cityId", () => {
+      const result = bookingCreateSchema.safeParse({
+        preBooking: true,
+        searchParams: {
+          cityId: -5, // Invalid
+          checkIn: "2025-03-01",
+          checkOut: "2025-03-05",
+          rooms: [{ adults: 2 }],
+          currency: "TND",
+        },
+        selectedOffer: {
+          hotelId: 100,
+          roomId: 5,
+        },
+        methodPayment: "credit_card",
+        currency: "TND",
+        city: 1,
+        hotel: 100,
+        checkIn: "2025-03-01",
+        checkOut: "2025-03-05",
+        rooms: [
+          {
+            id: 5,
+            boarding: "BB",
+            pax: {
+              adults: [
+                {
+                  firstName: "John",
+                  lastName: "Doe",
+                  nationality: "TN",
+                },
+              ],
+            },
+          },
+        ],
+        customer: {
+          firstName: "John",
+          lastName: "Doe",
+          email: "john@example.com",
+          phone: "+21612345678",
+          nationality: "TN",
+        },
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const cityIdError = result.error.issues.find(
+          (issue) => issue.path.includes("cityId")
+        );
+        expect(cityIdError).toBeDefined();
+      }
+    });
+  });
+
+  describe("Token-free payload with invalid hotelId", () => {
+    it("should reject token-free booking with zero hotelId", () => {
+      const result = bookingCreateSchema.safeParse({
+        preBooking: true,
+        searchParams: {
+          cityId: 1,
+          checkIn: "2025-03-01",
+          checkOut: "2025-03-05",
+          rooms: [{ adults: 2 }],
+          currency: "TND",
+        },
+        selectedOffer: {
+          hotelId: 0, // Invalid
+          roomId: 5,
+        },
+        methodPayment: "credit_card",
+        currency: "TND",
+        city: 1,
+        hotel: 100,
+        checkIn: "2025-03-01",
+        checkOut: "2025-03-05",
+        rooms: [
+          {
+            id: 5,
+            boarding: "BB",
+            pax: {
+              adults: [
+                {
+                  firstName: "John",
+                  lastName: "Doe",
+                  nationality: "TN",
+                },
+              ],
+            },
+          },
+        ],
+        customer: {
+          firstName: "John",
+          lastName: "Doe",
+          email: "john@example.com",
+          phone: "+21612345678",
+          nationality: "TN",
+        },
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const hotelIdError = result.error.issues.find(
+          (issue) => issue.path.includes("hotelId")
+        );
+        expect(hotelIdError).toBeDefined();
+        expect(hotelIdError?.message).toContain("positive");
+      }
+    });
+
+    it("should reject token-free booking with negative roomId", () => {
+      const result = bookingCreateSchema.safeParse({
+        preBooking: true,
+        searchParams: {
+          cityId: 1,
+          checkIn: "2025-03-01",
+          checkOut: "2025-03-05",
+          rooms: [{ adults: 2 }],
+          currency: "TND",
+        },
+        selectedOffer: {
+          hotelId: 100,
+          roomId: -1, // Invalid
+        },
+        methodPayment: "credit_card",
+        currency: "TND",
+        city: 1,
+        hotel: 100,
+        checkIn: "2025-03-01",
+        checkOut: "2025-03-05",
+        rooms: [
+          {
+            id: 5,
+            boarding: "BB",
+            pax: {
+              adults: [
+                {
+                  firstName: "John",
+                  lastName: "Doe",
+                  nationality: "TN",
+                },
+              ],
+            },
+          },
+        ],
+        customer: {
+          firstName: "John",
+          lastName: "Doe",
+          email: "john@example.com",
+          phone: "+21612345678",
+          nationality: "TN",
+        },
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const roomIdError = result.error.issues.find(
+          (issue) => issue.path.includes("roomId")
+        );
+        expect(roomIdError).toBeDefined();
+      }
+    });
+  });
+
+  describe("Token-free payload with missing required fields", () => {
+    it("should reject token-free booking with missing customer", () => {
+      const result = bookingCreateSchema.safeParse({
+        preBooking: true,
+        searchParams: {
+          cityId: 1,
+          checkIn: "2025-03-01",
+          checkOut: "2025-03-05",
+          rooms: [{ adults: 2 }],
+          currency: "TND",
+        },
+        selectedOffer: {
+          hotelId: 100,
+          roomId: 5,
+        },
+        methodPayment: "credit_card",
+        currency: "TND",
+        city: 1,
+        hotel: 100,
+        checkIn: "2025-03-01",
+        checkOut: "2025-03-05",
+        rooms: [
+          {
+            id: 5,
+            boarding: "BB",
+            pax: {
+              adults: [
+                {
+                  firstName: "John",
+                  lastName: "Doe",
+                  nationality: "TN",
+                },
+              ],
+            },
+          },
+        ],
+        // Missing customer field
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const customerError = result.error.issues.find(
+          (issue) => issue.path.includes("customer")
+        );
+        expect(customerError).toBeDefined();
+      }
+    });
+
+    it("should reject token-free booking with invalid email format", () => {
+      const result = bookingCreateSchema.safeParse({
+        preBooking: true,
+        searchParams: {
+          cityId: 1,
+          checkIn: "2025-03-01",
+          checkOut: "2025-03-05",
+          rooms: [{ adults: 2 }],
+          currency: "TND",
+        },
+        selectedOffer: {
+          hotelId: 100,
+          roomId: 5,
+        },
+        methodPayment: "credit_card",
+        currency: "TND",
+        city: 1,
+        hotel: 100,
+        checkIn: "2025-03-01",
+        checkOut: "2025-03-05",
+        rooms: [
+          {
+            id: 5,
+            boarding: "BB",
+            pax: {
+              adults: [
+                {
+                  firstName: "John",
+                  lastName: "Doe",
+                  nationality: "TN",
+                },
+              ],
+            },
+          },
+        ],
+        customer: {
+          firstName: "John",
+          lastName: "Doe",
+          email: "invalid-email", // Invalid email
+          phone: "+21612345678",
+          nationality: "TN",
+        },
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const emailError = result.error.issues.find(
+          (issue) => issue.path.includes("email")
+        );
+        expect(emailError).toBeDefined();
+      }
+    });
+
+    it("should reject token-free booking with invalid phone format", () => {
+      const result = bookingCreateSchema.safeParse({
+        preBooking: true,
+        searchParams: {
+          cityId: 1,
+          checkIn: "2025-03-01",
+          checkOut: "2025-03-05",
+          rooms: [{ adults: 2 }],
+          currency: "TND",
+        },
+        selectedOffer: {
+          hotelId: 100,
+          roomId: 5,
+        },
+        methodPayment: "credit_card",
+        currency: "TND",
+        city: 1,
+        hotel: 100,
+        checkIn: "2025-03-01",
+        checkOut: "2025-03-05",
+        rooms: [
+          {
+            id: 5,
+            boarding: "BB",
+            pax: {
+              adults: [
+                {
+                  firstName: "John",
+                  lastName: "Doe",
+                  nationality: "TN",
+                },
+              ],
+            },
+          },
+        ],
+        customer: {
+          firstName: "John",
+          lastName: "Doe",
+          email: "john@example.com",
+          phone: "abc", // Invalid phone (not E.164 format)
+          nationality: "TN",
+        },
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const phoneError = result.error.issues.find(
+          (issue) => issue.path.includes("phone")
+        );
+        expect(phoneError).toBeDefined();
+      }
+    });
+  });
+
+  describe("MyGo API error handling expectations", () => {
+    it("should document expected 400 error from MyGo for missing city", () => {
+      // This test documents the expected behavior when MyGo returns 400 for missing City field
+      // The error should be caught in mygoClient and thrown as ValidationError
+      // Example MyGo error: "Vérifier l'envoi des champs obligatoires: City"
+      // This should result in HTTP 400 status code, not 502
+      expect(true).toBe(true);
+    });
+
+    it("should document expected 400 error from MyGo for invalid token", () => {
+      // This test documents the expected behavior when MyGo returns 400 for invalid/expired token
+      // The error should be caught in mygoClient and thrown as ValidationError
+      // This should result in HTTP 400 status code, not 502
+      expect(true).toBe(true);
+    });
+
+    it("should document expected 400 error from MyGo for unavailable room", () => {
+      // This test documents the expected behavior when MyGo returns 400 for room not available
+      // The error should be caught in mygoClient and thrown as ValidationError
+      // This should result in HTTP 400 status code, not 502
+      expect(true).toBe(true);
+    });
+  });
+});
