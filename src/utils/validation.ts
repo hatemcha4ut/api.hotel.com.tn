@@ -134,7 +134,7 @@ export const tokenFreeBookingSchema = z.object({
 // Legacy token-based booking schema (for backward compatibility)
 export const bookingCreateSchema = z.object({
   preBooking: z.boolean(),
-  token: z.string().trim().min(1, "Token is required and cannot be empty").optional(),
+  token: z.string().trim().min(1, "Token must not be empty if provided").optional(),
   // Token-free fields (optional for backward compatibility)
   searchParams: searchParamsSchema.optional(),
   selectedOffer: selectedOfferSchema.optional(),

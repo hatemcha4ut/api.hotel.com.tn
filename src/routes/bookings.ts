@@ -24,6 +24,9 @@ const bookings = new Hono<{ Bindings: Env; Variables: HonoVariables }>();
 // Apply optional auth to all routes
 bookings.use("/*", optionalAuth());
 
+// Constants for logging
+const TOKEN_HASH_LOG_LENGTH = 16; // Number of characters to show from token hash in logs
+
 /**
  * Helper to create MyGO credential from environment
  */
@@ -97,7 +100,7 @@ const reconstructToken = async (
 
     const tokenHash = await hashToken(searchResult.token);
     logger.info("Fresh token reconstructed", {
-      tokenHash: tokenHash.substring(0, 16) + "...",
+      tokenHash: tokenHash.substring(0, TOKEN_HASH_LOG_LENGTH) + "...",
       hotelsFound: searchResult.hotels.length,
     });
 
@@ -174,7 +177,7 @@ bookings.post("/prebook", async (c) => {
       tokenHash = await hashToken(bookingToken);
       
       logger.info("Using provided token", {
-        tokenHash: tokenHash.substring(0, 16) + "...",
+        tokenHash: tokenHash.substring(0, TOKEN_HASH_LOG_LENGTH) + "...",
       });
     }
 
@@ -196,7 +199,7 @@ bookings.post("/prebook", async (c) => {
       checkIn: isTokenFree ? validatedData.searchParams!.checkIn : validatedData.checkIn,
       checkOut: isTokenFree ? validatedData.searchParams!.checkOut : validatedData.checkOut,
       rooms: validatedData.rooms.length,
-      tokenHash: tokenHash.substring(0, 16) + "...",
+      tokenHash: tokenHash.substring(0, TOKEN_HASH_LOG_LENGTH) + "...",
       mode: isTokenFree ? "token-free" : "token-based",
     });
 
@@ -205,7 +208,7 @@ bookings.post("/prebook", async (c) => {
     logger.info("Pre-booking created successfully", {
       bookingId: bookingResult.bookingId,
       state: bookingResult.state,
-      tokenHash: tokenHash.substring(0, 16) + "...",
+      tokenHash: tokenHash.substring(0, TOKEN_HASH_LOG_LENGTH) + "...",
     });
 
     // Store pre-booking in database
@@ -337,7 +340,7 @@ bookings.post("/create", async (c) => {
       tokenHash = await hashToken(bookingToken);
       
       logger.info("Using provided token", {
-        tokenHash: tokenHash.substring(0, 16) + "...",
+        tokenHash: tokenHash.substring(0, TOKEN_HASH_LOG_LENGTH) + "...",
       });
     }
 
@@ -359,7 +362,7 @@ bookings.post("/create", async (c) => {
       checkIn: isTokenFree ? validatedData.searchParams!.checkIn : validatedData.checkIn,
       checkOut: isTokenFree ? validatedData.searchParams!.checkOut : validatedData.checkOut,
       rooms: validatedData.rooms.length,
-      tokenHash: tokenHash.substring(0, 16) + "...",
+      tokenHash: tokenHash.substring(0, TOKEN_HASH_LOG_LENGTH) + "...",
       mode: isTokenFree ? "token-free" : "token-based",
     });
 
@@ -368,7 +371,7 @@ bookings.post("/create", async (c) => {
     logger.info("Booking created successfully", {
       bookingId: bookingResult.bookingId,
       state: bookingResult.state,
-      tokenHash: tokenHash.substring(0, 16) + "...",
+      tokenHash: tokenHash.substring(0, TOKEN_HASH_LOG_LENGTH) + "...",
     });
 
     // Store booking in database
