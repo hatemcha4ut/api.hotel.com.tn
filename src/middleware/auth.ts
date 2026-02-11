@@ -6,6 +6,7 @@
 import type { Context, Next } from "hono";
 import type { Env, HonoVariables } from "../types/env";
 import { createClient } from "@supabase/supabase-js";
+import { getCookie } from "hono/cookie";
 
 /**
  * Verify JWT token using Supabase client
@@ -148,7 +149,7 @@ export const requireAdmin = () => {
 export const extractGuestSession = () => {
   return async (c: Context<{ Variables: HonoVariables }>, next: Next) => {
     const guestSessionId =
-      c.req.header("X-Guest-Session-ID") || c.req.cookie("guest_session_id");
+      c.req.header("X-Guest-Session-ID") || getCookie(c, "guest_session_id");
     
     if (guestSessionId) {
       c.set("guestSessionId", guestSessionId);
