@@ -1206,7 +1206,7 @@ export const searchHotels = async (
       throw new Error('MyGo HotelSearch returned hotels but no booking token. Cannot proceed with booking.');
     }
   } else {
-    console.log(`[MyGo HotelSearch] Token generated (first 10 chars): ${fallbackToken.substring(0, 10)}..., Hotels: ${hotels.length}`);
+    console.log(`[MyGo HotelSearch] Token generated (first ${Math.min(10, fallbackToken.length)} chars): ${fallbackToken.substring(0, Math.min(10, fallbackToken.length))}..., Hotels: ${hotels.length}`);
   }
 
   return { token: fallbackToken, hotels };
@@ -1219,7 +1219,8 @@ export const createBooking = async (
   const payload = buildBookingCreationPayload(credential, params);
   
   // Debug log: Log key identifiers without sensitive data
-  console.log(`[MyGo BookingCreation] Creating booking with token (first 10 chars): ${params.token.substring(0, 10)}...`);
+  const tokenPreview = params.token.substring(0, Math.min(10, params.token.length));
+  console.log(`[MyGo BookingCreation] Creating booking with token (first ${Math.min(10, params.token.length)} chars): ${tokenPreview}...`);
   console.log(`[MyGo BookingCreation] PreBooking: ${params.preBooking}, RoomSelections count: ${params.roomSelections.length}`);
   
   const data = await postJson("BookingCreation", payload);

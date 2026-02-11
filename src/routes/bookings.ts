@@ -73,7 +73,7 @@ bookings.post("/prebook", async (c) => {
       checkIn: validatedData.checkIn,
       checkOut: validatedData.checkOut,
       rooms: validatedData.rooms.length,
-      tokenPreview: validatedData.token.substring(0, 10) + "...",
+      tokenPreview: validatedData.token.substring(0, Math.min(10, validatedData.token.length)) + "...",
     });
 
     const bookingResult = await createBooking(credential, mygoParams);
@@ -192,7 +192,7 @@ bookings.post("/create", async (c) => {
       checkIn: validatedData.checkIn,
       checkOut: validatedData.checkOut,
       rooms: validatedData.rooms.length,
-      tokenPreview: validatedData.token.substring(0, 10) + "...",
+      tokenPreview: validatedData.token.substring(0, Math.min(10, validatedData.token.length)) + "...",
     });
 
     const bookingResult = await createBooking(credential, mygoParams);
