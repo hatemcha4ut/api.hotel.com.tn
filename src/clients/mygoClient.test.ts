@@ -81,7 +81,7 @@ describe("buildHotelSearchPayload", () => {
     };
 
     expect(() => buildHotelSearchPayload(credential, params)).toThrow(
-      "Invalid cityId for MyGo HotelSearch: 0 (must be positive integer)"
+      /Invalid cityId for MyGo HotelSearch.*City must be a positive integer/
     );
   });
 
@@ -94,7 +94,7 @@ describe("buildHotelSearchPayload", () => {
     };
 
     expect(() => buildHotelSearchPayload(credential, params)).toThrow(
-      "Invalid cityId for MyGo HotelSearch: -5 (must be positive integer)"
+      /Invalid cityId for MyGo HotelSearch.*City must be a positive integer/
     );
   });
 
@@ -107,7 +107,7 @@ describe("buildHotelSearchPayload", () => {
     };
 
     expect(() => buildHotelSearchPayload(credential, params)).toThrow(
-      "Invalid cityId for MyGo HotelSearch: 1.5 (must be positive integer)"
+      /Invalid cityId for MyGo HotelSearch.*City must be a positive integer/
     );
   });
 

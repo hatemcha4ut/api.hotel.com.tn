@@ -471,7 +471,19 @@ export const buildHotelSearchPayload = (
 } => {
   // Defensive validation: ensure City field is valid before sending to MyGo
   if (typeof params.cityId !== "number" || !Number.isInteger(params.cityId) || params.cityId <= 0) {
-    throw new Error(`Invalid cityId for MyGo HotelSearch: ${params.cityId} (must be positive integer)`);
+    const diagnostic = {
+      providedValue: params.cityId,
+      valueType: typeof params.cityId,
+      isInteger: Number.isInteger(params.cityId),
+      checkIn: params.checkIn,
+      checkOut: params.checkOut,
+      roomCount: params.rooms?.length,
+    };
+    console.error('[MyGo HotelSearch] City field validation failed:', diagnostic);
+    throw new Error(
+      `Invalid cityId for MyGo HotelSearch: ${JSON.stringify(params.cityId)} (type: ${typeof params.cityId}). ` +
+      `City must be a positive integer. This causes MyGo API error: "Vérifier l'envoi des champs obligatoires: City"`
+    );
   }
 
   return {
@@ -943,48 +955,100 @@ export const postXml = async (
 };
 
 // POST JSON to MyGo API
+// POST JSON to MyGo API with retry logic and enhanced error logging
 export const postJson = async (
   serviceName: string,
   payload: unknown,
+  maxRetries: number = MAX_RETRIES,
 ): Promise<unknown> => {
   const url = `${MYGO_BASE_URL}/${serviceName}`;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let lastError: Error | null = null;
 
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
+  // Sanitize payload for logging (remove password)
+  const sanitizedPayload = typeof payload === 'object' && payload !== null
+    ? {
+        ...payload as Record<string, unknown>,
+        Credential: (payload as { Credential?: { Login?: string; Password?: string } }).Credential
+          ? {
+              ...(payload as { Credential: { Login?: string; Password?: string } }).Credential,
+              Password: "***"
+            }
+          : undefined
+      }
+    : payload;
 
-    const responseText = await response.text();
-    const contentType = response.headers.get("content-type") || "";
+  console.log(`[MyGo ${serviceName}] Request initiated with payload preview:`, JSON.stringify(sanitizedPayload).slice(0, 500));
 
-    if (!response.ok) {
-      throw new Error(`MyGo error ${response.status}: ${responseText.slice(0, 400)}`);
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      console.log(`[MyGo ${serviceName}] Retry attempt ${attempt}/${maxRetries}`);
     }
 
-    if (!contentType.toLowerCase().includes("application/json")) {
-      throw new Error(
-        `Unexpected MyGo response type for ${serviceName}: ${contentType}`,
-      );
-    }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-    return JSON.parse(responseText);
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`MyGo API timeout after ${REQUEST_TIMEOUT_MS}ms`);
-    }
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
 
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
+      clearTimeout(timeoutId);
+
+      const responseText = await response.text();
+      const contentType = response.headers.get("content-type") || "";
+
+      console.log(`[MyGo ${serviceName}] Response received: status=${response.status}, content-type=${contentType}`);
+
+      if (!response.ok) {
+        const errorPreview = responseText.slice(0, 400);
+        console.error(`[MyGo ${serviceName}] HTTP error ${response.status}:`, errorPreview);
+        
+        // Retry on 502/503/504 (gateway errors) and 429 (rate limit)
+        if ((response.status === 502 || response.status === 503 || response.status === 504 || response.status === 429) && attempt < maxRetries) {
+          const backoffMs = Math.min(RETRY_BASE_MS * Math.pow(2, attempt), RETRY_MAX_MS);
+          console.log(`[MyGo ${serviceName}] Retryable error ${response.status}, backing off for ${backoffMs}ms`);
+          await new Promise((resolve) => setTimeout(resolve, backoffMs));
+          continue;
+        }
+        
+        throw new Error(`MyGo ${serviceName} error ${response.status}: ${errorPreview}`);
+      }
+
+      if (!contentType.toLowerCase().includes("application/json")) {
+        console.error(`[MyGo ${serviceName}] Unexpected content-type: ${contentType}`);
+        throw new Error(
+          `Unexpected MyGo response type for ${serviceName}: ${contentType}. Response: ${responseText.slice(0, 200)}`,
+        );
+      }
+
+      console.log(`[MyGo ${serviceName}] Request successful`);
+      return JSON.parse(responseText);
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // Don't retry on timeout
+      if (error instanceof Error && error.name === "AbortError") {
+        console.error(`[MyGo ${serviceName}] Request timeout after ${REQUEST_TIMEOUT_MS}ms`);
+        throw new Error(`MyGo ${serviceName} timeout after ${REQUEST_TIMEOUT_MS}ms`);
+      }
+
+      // If this isn't the last attempt, wait before retrying
+      if (attempt < maxRetries) {
+        const backoffMs = Math.min(RETRY_BASE_MS * Math.pow(2, attempt), RETRY_MAX_MS);
+        console.log(`[MyGo ${serviceName}] Error encountered, backing off for ${backoffMs}ms before retry`);
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      }
+    }
   }
+
+  console.error(`[MyGo ${serviceName}] All retry attempts exhausted`);
+  throw lastError ?? new Error(`MyGo ${serviceName} request failed after ${maxRetries + 1} attempts`);
 };
 
 export const myGoPostJson = async <T = MyGoJsonResponse>(
