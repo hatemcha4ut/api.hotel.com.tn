@@ -906,6 +906,10 @@ export const searchHotels = async (
   params: MyGoSearchParams,
 ): Promise<MyGoSearchResponse> => {
   const payload = buildHotelSearchPayload(credential, params);
+  
+  // Debug log: Confirm City value sent to MyGo API
+  console.log(`[MyGo HotelSearch] City field value: ${payload.SearchDetails.City}`);
+  
   const safePayload = {
     ...payload,
     Credential: {
