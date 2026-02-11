@@ -138,6 +138,10 @@ bookings.post("/prebook", async (c) => {
     if (error instanceof Error && error.name === "ZodError") {
       throw new ValidationError("Invalid booking data", error);
     }
+    // If the error is already a ValidationError from mygoClient, re-throw it
+    if (error instanceof ValidationError) {
+      throw error;
+    }
     logger.error("Pre-booking creation failed", {
       error: error instanceof Error ? error.message : String(error),
     });
@@ -253,6 +257,10 @@ bookings.post("/create", async (c) => {
   } catch (error) {
     if (error instanceof Error && error.name === "ZodError") {
       throw new ValidationError("Invalid booking data", error);
+    }
+    // If the error is already a ValidationError from mygoClient, re-throw it
+    if (error instanceof ValidationError) {
+      throw error;
     }
     logger.error("Booking creation failed", {
       error: error instanceof Error ? error.message : String(error),
