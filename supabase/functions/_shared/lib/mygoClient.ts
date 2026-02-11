@@ -454,6 +454,7 @@ export const buildHotelSearchPayload = (
 ): {
   Credential: { Login: string; Password: string };
   SearchDetails: {
+    City: number;
     BookingDetails: {
       CheckIn: string;
       CheckOut: string;
@@ -474,6 +475,7 @@ export const buildHotelSearchPayload = (
       Password: credential.password,
     },
     SearchDetails: {
+      City: params.cityId,
       BookingDetails: {
         CheckIn: params.checkIn,
         CheckOut: params.checkOut,
