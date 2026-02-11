@@ -1308,8 +1308,10 @@ export const searchHotels = async (
     const errorDesc = String(errorMessage.Description || '');
     const fullErrorMessage = `MyGo HotelSearch error ${errorCode}: ${errorDesc}`;
     
-    // Treat 400 errors and validation-related errors as ValidationErrors
-    if (errorCode === '400' || errorDesc.includes('Vérifier l\'envoi des champs obligatoires') || errorDesc.includes('champs obligatoires')) {
+    // Treat 400 errors as ValidationErrors
+    // MyGo returns 400 for missing required fields, invalid parameters, etc.
+    // Note: We check for '400' string because MyGo may return Code as string or number
+    if (errorCode === '400' || errorCode === '400.0') {
       throw new ValidationError(fullErrorMessage);
     }
     
