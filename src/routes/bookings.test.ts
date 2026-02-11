@@ -816,48 +816,57 @@ describe("Token-Free Booking Schema", () => {
 });
 
 describe("Token-Free Booking - MyGo Validation Errors", () => {
+  // Base fixture for token-free booking tests - reduces code duplication
+  const validTokenFreeBookingBase = {
+    preBooking: true,
+    searchParams: {
+      cityId: 1,
+      checkIn: "2025-03-01",
+      checkOut: "2025-03-05",
+      rooms: [{ adults: 2 }],
+      currency: "TND" as const,
+    },
+    selectedOffer: {
+      hotelId: 100,
+      roomId: 5,
+    },
+    methodPayment: "credit_card",
+    currency: "TND",
+    city: 1,
+    hotel: 100,
+    checkIn: "2025-03-01",
+    checkOut: "2025-03-05",
+    rooms: [
+      {
+        id: 5,
+        boarding: "BB",
+        pax: {
+          adults: [
+            {
+              firstName: "John",
+              lastName: "Doe",
+              nationality: "TN",
+            },
+          ],
+        },
+      },
+    ],
+    customer: {
+      firstName: "John",
+      lastName: "Doe",
+      email: "john@example.com",
+      phone: "+21612345678",
+      nationality: "TN",
+    },
+  };
+
   describe("Token-free payload with invalid cityId", () => {
     it("should reject token-free booking with zero cityId", () => {
       const result = bookingCreateSchema.safeParse({
-        preBooking: true,
+        ...validTokenFreeBookingBase,
         searchParams: {
+          ...validTokenFreeBookingBase.searchParams,
           cityId: 0, // Invalid
-          checkIn: "2025-03-01",
-          checkOut: "2025-03-05",
-          rooms: [{ adults: 2 }],
-          currency: "TND",
-        },
-        selectedOffer: {
-          hotelId: 100,
-          roomId: 5,
-        },
-        methodPayment: "credit_card",
-        currency: "TND",
-        city: 1,
-        hotel: 100,
-        checkIn: "2025-03-01",
-        checkOut: "2025-03-05",
-        rooms: [
-          {
-            id: 5,
-            boarding: "BB",
-            pax: {
-              adults: [
-                {
-                  firstName: "John",
-                  lastName: "Doe",
-                  nationality: "TN",
-                },
-              ],
-            },
-          },
-        ],
-        customer: {
-          firstName: "John",
-          lastName: "Doe",
-          email: "john@example.com",
-          phone: "+21612345678",
-          nationality: "TN",
         },
       });
 
@@ -874,45 +883,10 @@ describe("Token-Free Booking - MyGo Validation Errors", () => {
 
     it("should reject token-free booking with negative cityId", () => {
       const result = bookingCreateSchema.safeParse({
-        preBooking: true,
+        ...validTokenFreeBookingBase,
         searchParams: {
+          ...validTokenFreeBookingBase.searchParams,
           cityId: -5, // Invalid
-          checkIn: "2025-03-01",
-          checkOut: "2025-03-05",
-          rooms: [{ adults: 2 }],
-          currency: "TND",
-        },
-        selectedOffer: {
-          hotelId: 100,
-          roomId: 5,
-        },
-        methodPayment: "credit_card",
-        currency: "TND",
-        city: 1,
-        hotel: 100,
-        checkIn: "2025-03-01",
-        checkOut: "2025-03-05",
-        rooms: [
-          {
-            id: 5,
-            boarding: "BB",
-            pax: {
-              adults: [
-                {
-                  firstName: "John",
-                  lastName: "Doe",
-                  nationality: "TN",
-                },
-              ],
-            },
-          },
-        ],
-        customer: {
-          firstName: "John",
-          lastName: "Doe",
-          email: "john@example.com",
-          phone: "+21612345678",
-          nationality: "TN",
         },
       });
 
@@ -929,45 +903,10 @@ describe("Token-Free Booking - MyGo Validation Errors", () => {
   describe("Token-free payload with invalid hotelId", () => {
     it("should reject token-free booking with zero hotelId", () => {
       const result = bookingCreateSchema.safeParse({
-        preBooking: true,
-        searchParams: {
-          cityId: 1,
-          checkIn: "2025-03-01",
-          checkOut: "2025-03-05",
-          rooms: [{ adults: 2 }],
-          currency: "TND",
-        },
+        ...validTokenFreeBookingBase,
         selectedOffer: {
+          ...validTokenFreeBookingBase.selectedOffer,
           hotelId: 0, // Invalid
-          roomId: 5,
-        },
-        methodPayment: "credit_card",
-        currency: "TND",
-        city: 1,
-        hotel: 100,
-        checkIn: "2025-03-01",
-        checkOut: "2025-03-05",
-        rooms: [
-          {
-            id: 5,
-            boarding: "BB",
-            pax: {
-              adults: [
-                {
-                  firstName: "John",
-                  lastName: "Doe",
-                  nationality: "TN",
-                },
-              ],
-            },
-          },
-        ],
-        customer: {
-          firstName: "John",
-          lastName: "Doe",
-          email: "john@example.com",
-          phone: "+21612345678",
-          nationality: "TN",
         },
       });
 
@@ -981,47 +920,12 @@ describe("Token-Free Booking - MyGo Validation Errors", () => {
       }
     });
 
-    it("should reject token-free booking with negative roomId", () => {
+    it("should reject token-free booking with negative roomId in selectedOffer", () => {
       const result = bookingCreateSchema.safeParse({
-        preBooking: true,
-        searchParams: {
-          cityId: 1,
-          checkIn: "2025-03-01",
-          checkOut: "2025-03-05",
-          rooms: [{ adults: 2 }],
-          currency: "TND",
-        },
+        ...validTokenFreeBookingBase,
         selectedOffer: {
-          hotelId: 100,
+          ...validTokenFreeBookingBase.selectedOffer,
           roomId: -1, // Invalid
-        },
-        methodPayment: "credit_card",
-        currency: "TND",
-        city: 1,
-        hotel: 100,
-        checkIn: "2025-03-01",
-        checkOut: "2025-03-05",
-        rooms: [
-          {
-            id: 5,
-            boarding: "BB",
-            pax: {
-              adults: [
-                {
-                  firstName: "John",
-                  lastName: "Doe",
-                  nationality: "TN",
-                },
-              ],
-            },
-          },
-        ],
-        customer: {
-          firstName: "John",
-          lastName: "Doe",
-          email: "john@example.com",
-          phone: "+21612345678",
-          nationality: "TN",
         },
       });
 
@@ -1037,42 +941,8 @@ describe("Token-Free Booking - MyGo Validation Errors", () => {
 
   describe("Token-free payload with missing required fields", () => {
     it("should reject token-free booking with missing customer", () => {
-      const result = bookingCreateSchema.safeParse({
-        preBooking: true,
-        searchParams: {
-          cityId: 1,
-          checkIn: "2025-03-01",
-          checkOut: "2025-03-05",
-          rooms: [{ adults: 2 }],
-          currency: "TND",
-        },
-        selectedOffer: {
-          hotelId: 100,
-          roomId: 5,
-        },
-        methodPayment: "credit_card",
-        currency: "TND",
-        city: 1,
-        hotel: 100,
-        checkIn: "2025-03-01",
-        checkOut: "2025-03-05",
-        rooms: [
-          {
-            id: 5,
-            boarding: "BB",
-            pax: {
-              adults: [
-                {
-                  firstName: "John",
-                  lastName: "Doe",
-                  nationality: "TN",
-                },
-              ],
-            },
-          },
-        ],
-        // Missing customer field
-      });
+      const { customer, ...requestWithoutCustomer } = validTokenFreeBookingBase;
+      const result = bookingCreateSchema.safeParse(requestWithoutCustomer);
 
       expect(result.success).toBe(false);
       if (!result.success) {
@@ -1085,45 +955,10 @@ describe("Token-Free Booking - MyGo Validation Errors", () => {
 
     it("should reject token-free booking with invalid email format", () => {
       const result = bookingCreateSchema.safeParse({
-        preBooking: true,
-        searchParams: {
-          cityId: 1,
-          checkIn: "2025-03-01",
-          checkOut: "2025-03-05",
-          rooms: [{ adults: 2 }],
-          currency: "TND",
-        },
-        selectedOffer: {
-          hotelId: 100,
-          roomId: 5,
-        },
-        methodPayment: "credit_card",
-        currency: "TND",
-        city: 1,
-        hotel: 100,
-        checkIn: "2025-03-01",
-        checkOut: "2025-03-05",
-        rooms: [
-          {
-            id: 5,
-            boarding: "BB",
-            pax: {
-              adults: [
-                {
-                  firstName: "John",
-                  lastName: "Doe",
-                  nationality: "TN",
-                },
-              ],
-            },
-          },
-        ],
+        ...validTokenFreeBookingBase,
         customer: {
-          firstName: "John",
-          lastName: "Doe",
+          ...validTokenFreeBookingBase.customer,
           email: "invalid-email", // Invalid email
-          phone: "+21612345678",
-          nationality: "TN",
         },
       });
 
@@ -1138,45 +973,10 @@ describe("Token-Free Booking - MyGo Validation Errors", () => {
 
     it("should reject token-free booking with invalid phone format", () => {
       const result = bookingCreateSchema.safeParse({
-        preBooking: true,
-        searchParams: {
-          cityId: 1,
-          checkIn: "2025-03-01",
-          checkOut: "2025-03-05",
-          rooms: [{ adults: 2 }],
-          currency: "TND",
-        },
-        selectedOffer: {
-          hotelId: 100,
-          roomId: 5,
-        },
-        methodPayment: "credit_card",
-        currency: "TND",
-        city: 1,
-        hotel: 100,
-        checkIn: "2025-03-01",
-        checkOut: "2025-03-05",
-        rooms: [
-          {
-            id: 5,
-            boarding: "BB",
-            pax: {
-              adults: [
-                {
-                  firstName: "John",
-                  lastName: "Doe",
-                  nationality: "TN",
-                },
-              ],
-            },
-          },
-        ],
+        ...validTokenFreeBookingBase,
         customer: {
-          firstName: "John",
-          lastName: "Doe",
-          email: "john@example.com",
+          ...validTokenFreeBookingBase.customer,
           phone: "abc", // Invalid phone (not E.164 format)
-          nationality: "TN",
         },
       });
 
