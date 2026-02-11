@@ -6,9 +6,9 @@
 import { Hono } from "hono";
 import { ZodError } from "zod";
 import type { Env, HonoVariables } from "../types/env";
-import { createBooking, bookingDetails } from "../clients/mygoClient";
+import { createBooking, bookingDetails, searchHotels } from "../clients/mygoClient";
 import { createServiceClient } from "../clients/supabaseClient";
-import type { MyGoCredential } from "../types/mygo";
+import type { MyGoCredential, MyGoSearchParams } from "../types/mygo";
 import { bookingCreateSchema, uuidSchema } from "../utils/validation";
 import { createLogger } from "../utils/logger";
 import {
@@ -33,9 +33,102 @@ const getMyGoCredential = (env: Env): MyGoCredential => ({
 });
 
 /**
+ * Hash token for secure logging (SHA-256)
+ * Used for audit trail without exposing the actual token
+ */
+const hashToken = async (token: string): Promise<string> => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(token);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+};
+
+/**
+ * Reconstruct fresh MyGo search token server-side
+ * This allows token-free booking flow where frontend doesn't handle tokens
+ */
+const reconstructToken = async (
+  credential: MyGoCredential,
+  searchParams: {
+    cityId: number;
+    checkIn: string;
+    checkOut: string;
+    rooms: Array<{ adults: number; childrenAges?: number[] }>;
+    currency?: string;
+  },
+  selectedOffer: {
+    hotelId: number;
+  },
+  logger: ReturnType<typeof createLogger>
+): Promise<string> => {
+  logger.info("Reconstructing fresh MyGo token", {
+    cityId: searchParams.cityId,
+    hotelId: selectedOffer.hotelId,
+    checkIn: searchParams.checkIn,
+    checkOut: searchParams.checkOut,
+    roomCount: searchParams.rooms.length,
+  });
+
+  const mygoSearchParams: MyGoSearchParams = {
+    cityId: searchParams.cityId,
+    checkIn: searchParams.checkIn,
+    checkOut: searchParams.checkOut,
+    rooms: searchParams.rooms.map(room => ({
+      adults: room.adults,
+      childrenAges: room.childrenAges,
+    })),
+    currency: (searchParams.currency as "TND" | "EUR" | "USD" | undefined) || "TND",
+    onlyAvailable: true,
+    hotelIds: [selectedOffer.hotelId], // Filter to specific hotel for efficiency
+  };
+
+  try {
+    const searchResult = await searchHotels(credential, mygoSearchParams);
+    
+    if (!searchResult.token || searchResult.token.trim().length === 0) {
+      logger.error("MyGo HotelSearch returned empty token", {
+        cityId: searchParams.cityId,
+        hotelId: selectedOffer.hotelId,
+        hotelsFound: searchResult.hotels.length,
+      });
+      throw new Error("Failed to retrieve booking token from MyGo");
+    }
+
+    const tokenHash = await hashToken(searchResult.token);
+    logger.info("Fresh token reconstructed", {
+      tokenHash: tokenHash.substring(0, 16) + "...",
+      hotelsFound: searchResult.hotels.length,
+    });
+
+    return searchResult.token;
+  } catch (error) {
+    logger.error("Failed to reconstruct token", {
+      error: error instanceof Error ? error.message : String(error),
+      cityId: searchParams.cityId,
+      hotelId: selectedOffer.hotelId,
+    });
+    
+    // Re-throw ValidationError from MyGo as-is
+    if (error instanceof ValidationError) {
+      throw error;
+    }
+    
+    throw new ExternalServiceError(
+      "Failed to retrieve booking token from MyGo",
+      "MyGo HotelSearch"
+    );
+  }
+};
+
+/**
  * POST /bookings/prebook
  * Create a pre-booking (non-confirmed) with myGO
  * Pre-bookings allow checking availability before final payment
+ * 
+ * Supports two modes:
+ * 1. Token-free (recommended): Send searchParams + selectedOffer, server reconstructs token
+ * 2. Legacy token-based: Send token from search results (deprecated)
  */
 bookings.post("/prebook", async (c) => {
   const logger = createLogger(c.var);
@@ -53,27 +146,58 @@ bookings.post("/prebook", async (c) => {
     const body = await c.req.json();
     const validatedData = bookingCreateSchema.parse(body);
 
+    const credential = getMyGoCredential(c.env);
+    let bookingToken: string;
+    let tokenHash: string;
+
+    // Determine if this is token-free or token-based request
+    const isTokenFree = validatedData.searchParams && validatedData.selectedOffer;
+
+    if (isTokenFree) {
+      // TOKEN-FREE MODE: Reconstruct fresh token server-side
+      logger.info("Using token-free booking mode", {
+        cityId: validatedData.searchParams!.cityId,
+        hotelId: validatedData.selectedOffer!.hotelId,
+      });
+
+      bookingToken = await reconstructToken(
+        credential,
+        validatedData.searchParams!,
+        validatedData.selectedOffer!,
+        logger
+      );
+      tokenHash = await hashToken(bookingToken);
+    } else {
+      // LEGACY TOKEN-BASED MODE: Use provided token
+      logger.info("Using legacy token-based booking mode");
+      bookingToken = validatedData.token!;
+      tokenHash = await hashToken(bookingToken);
+      
+      logger.info("Using provided token", {
+        tokenHash: tokenHash.substring(0, 16) + "...",
+      });
+    }
+
     // Force preBooking to true for this endpoint
     const mygoParams = {
-      token: validatedData.token,
+      token: bookingToken,
       preBooking: true,
       customerName: `${validatedData.customer.firstName} ${validatedData.customer.lastName}`,
       customerEmail: validatedData.customer.email,
       customerPhone: validatedData.customer.phone,
       roomSelections: validatedData.rooms.map((room) => ({
-        hotelId: validatedData.hotel,
+        hotelId: isTokenFree ? validatedData.selectedOffer!.hotelId : validatedData.hotel,
         roomId: room.id,
       })),
     };
 
-    const credential = getMyGoCredential(c.env);
-
     logger.info("Creating pre-booking with myGO", {
-      hotel: validatedData.hotel,
-      checkIn: validatedData.checkIn,
-      checkOut: validatedData.checkOut,
+      hotel: isTokenFree ? validatedData.selectedOffer!.hotelId : validatedData.hotel,
+      checkIn: isTokenFree ? validatedData.searchParams!.checkIn : validatedData.checkIn,
+      checkOut: isTokenFree ? validatedData.searchParams!.checkOut : validatedData.checkOut,
       rooms: validatedData.rooms.length,
-      tokenPreview: validatedData.token.substring(0, Math.min(10, validatedData.token.length)) + "...",
+      tokenHash: tokenHash.substring(0, 16) + "...",
+      mode: isTokenFree ? "token-free" : "token-based",
     });
 
     const bookingResult = await createBooking(credential, mygoParams);
@@ -81,6 +205,7 @@ bookings.post("/prebook", async (c) => {
     logger.info("Pre-booking created successfully", {
       bookingId: bookingResult.bookingId,
       state: bookingResult.state,
+      tokenHash: tokenHash.substring(0, 16) + "...",
     });
 
     // Store pre-booking in database
@@ -89,21 +214,28 @@ bookings.post("/prebook", async (c) => {
     // Pre-bookings are always pending, regardless of myGO state
     const bookingStatus = "pending";
     
+    const hotelId = isTokenFree ? validatedData.selectedOffer!.hotelId : validatedData.hotel;
+    const checkIn = isTokenFree ? validatedData.searchParams!.checkIn : validatedData.checkIn;
+    const checkOut = isTokenFree ? validatedData.searchParams!.checkOut : validatedData.checkOut;
+    const currency = isTokenFree 
+      ? (validatedData.searchParams!.currency || "TND")
+      : validatedData.currency;
+    
     const bookingData = {
       user_id: userId || null,
       guest_session_id: guestSessionId || null,
       mode: userId ? "AVEC_COMPTE" : "SANS_COMPTE",
       mygo_booking_id: bookingResult.bookingId,
       mygo_state: bookingResult.state,
-      hotel_id: validatedData.hotel,
-      hotel_name: `Hotel ${validatedData.hotel}`, // TODO: Get actual hotel name from search results
-      check_in: validatedData.checkIn,
-      check_out: validatedData.checkOut,
+      hotel_id: hotelId,
+      hotel_name: `Hotel ${hotelId}`, // TODO: Get actual hotel name from search results
+      check_in: checkIn,
+      check_out: checkOut,
       rooms: validatedData.rooms.length,
       adults: validatedData.rooms.reduce((sum, r) => sum + r.pax.adults.length, 0),
       children: validatedData.rooms.reduce((sum, r) => sum + (r.pax.children?.length || 0), 0),
       total_price: (bookingResult.totalPrice as number) || 0,
-      currency: validatedData.currency,
+      currency: currency,
       status: bookingStatus,
       payment_status: "pending",
       customer_first_name: validatedData.customer.firstName,
@@ -116,6 +248,7 @@ bookings.post("/prebook", async (c) => {
       mygoState: bookingResult.state,
       status: bookingStatus,
       isOnRequest: bookingResult.state === "OnRequest",
+      bookingMode: isTokenFree ? "token-free" : "token-based",
     });
 
     const { data: dbBooking, error: dbError } = await supabase
@@ -134,7 +267,7 @@ bookings.post("/prebook", async (c) => {
       mygoBookingId: bookingResult.bookingId,
       state: bookingResult.state,
       totalPrice: bookingResult.totalPrice,
-      currency: validatedData.currency,
+      currency: currency,
     });
   } catch (error) {
     if (error instanceof ZodError) {
@@ -155,6 +288,10 @@ bookings.post("/prebook", async (c) => {
  * POST /bookings/create
  * Create a confirmed booking with myGO
  * This creates a final confirmed booking (preBooking=false)
+ * 
+ * Supports two modes:
+ * 1. Token-free (recommended): Send searchParams + selectedOffer, server reconstructs token
+ * 2. Legacy token-based: Send token from search results (deprecated)
  */
 bookings.post("/create", async (c) => {
   const logger = createLogger(c.var);
@@ -172,27 +309,58 @@ bookings.post("/create", async (c) => {
     const body = await c.req.json();
     const validatedData = bookingCreateSchema.parse(body);
 
+    const credential = getMyGoCredential(c.env);
+    let bookingToken: string;
+    let tokenHash: string;
+
+    // Determine if this is token-free or token-based request
+    const isTokenFree = validatedData.searchParams && validatedData.selectedOffer;
+
+    if (isTokenFree) {
+      // TOKEN-FREE MODE: Reconstruct fresh token server-side
+      logger.info("Using token-free booking mode", {
+        cityId: validatedData.searchParams!.cityId,
+        hotelId: validatedData.selectedOffer!.hotelId,
+      });
+
+      bookingToken = await reconstructToken(
+        credential,
+        validatedData.searchParams!,
+        validatedData.selectedOffer!,
+        logger
+      );
+      tokenHash = await hashToken(bookingToken);
+    } else {
+      // LEGACY TOKEN-BASED MODE: Use provided token
+      logger.info("Using legacy token-based booking mode");
+      bookingToken = validatedData.token!;
+      tokenHash = await hashToken(bookingToken);
+      
+      logger.info("Using provided token", {
+        tokenHash: tokenHash.substring(0, 16) + "...",
+      });
+    }
+
     // Force preBooking to false for this endpoint
     const mygoParams = {
-      token: validatedData.token,
+      token: bookingToken,
       preBooking: false,
       customerName: `${validatedData.customer.firstName} ${validatedData.customer.lastName}`,
       customerEmail: validatedData.customer.email,
       customerPhone: validatedData.customer.phone,
       roomSelections: validatedData.rooms.map((room) => ({
-        hotelId: validatedData.hotel,
+        hotelId: isTokenFree ? validatedData.selectedOffer!.hotelId : validatedData.hotel,
         roomId: room.id,
       })),
     };
 
-    const credential = getMyGoCredential(c.env);
-
     logger.info("Creating confirmed booking with myGO", {
-      hotel: validatedData.hotel,
-      checkIn: validatedData.checkIn,
-      checkOut: validatedData.checkOut,
+      hotel: isTokenFree ? validatedData.selectedOffer!.hotelId : validatedData.hotel,
+      checkIn: isTokenFree ? validatedData.searchParams!.checkIn : validatedData.checkIn,
+      checkOut: isTokenFree ? validatedData.searchParams!.checkOut : validatedData.checkOut,
       rooms: validatedData.rooms.length,
-      tokenPreview: validatedData.token.substring(0, Math.min(10, validatedData.token.length)) + "...",
+      tokenHash: tokenHash.substring(0, 16) + "...",
+      mode: isTokenFree ? "token-free" : "token-based",
     });
 
     const bookingResult = await createBooking(credential, mygoParams);
@@ -200,6 +368,7 @@ bookings.post("/create", async (c) => {
     logger.info("Booking created successfully", {
       bookingId: bookingResult.bookingId,
       state: bookingResult.state,
+      tokenHash: tokenHash.substring(0, 16) + "...",
     });
 
     // Store booking in database
@@ -210,21 +379,28 @@ bookings.post("/create", async (c) => {
     // - Status is "pending" if MyGO returns OnRequest state (requires manual confirmation or credit top-up)
     const bookingStatus = bookingResult.state === "OnRequest" ? "pending" : "confirmed";
     
+    const hotelId = isTokenFree ? validatedData.selectedOffer!.hotelId : validatedData.hotel;
+    const checkIn = isTokenFree ? validatedData.searchParams!.checkIn : validatedData.checkIn;
+    const checkOut = isTokenFree ? validatedData.searchParams!.checkOut : validatedData.checkOut;
+    const currency = isTokenFree 
+      ? (validatedData.searchParams!.currency || "TND")
+      : validatedData.currency;
+    
     const bookingData = {
       user_id: userId || null,
       guest_session_id: guestSessionId || null,
       mode: userId ? "AVEC_COMPTE" : "SANS_COMPTE",
       mygo_booking_id: bookingResult.bookingId,
       mygo_state: bookingResult.state,
-      hotel_id: validatedData.hotel,
-      hotel_name: `Hotel ${validatedData.hotel}`, // TODO: Get actual hotel name from search results
-      check_in: validatedData.checkIn,
-      check_out: validatedData.checkOut,
+      hotel_id: hotelId,
+      hotel_name: `Hotel ${hotelId}`, // TODO: Get actual hotel name from search results
+      check_in: checkIn,
+      check_out: checkOut,
       rooms: validatedData.rooms.length,
       adults: validatedData.rooms.reduce((sum, r) => sum + r.pax.adults.length, 0),
       children: validatedData.rooms.reduce((sum, r) => sum + (r.pax.children?.length || 0), 0),
       total_price: (bookingResult.totalPrice as number) || 0,
-      currency: validatedData.currency,
+      currency: currency,
       status: bookingStatus,
       payment_status: "pending",
       customer_first_name: validatedData.customer.firstName,
@@ -237,6 +413,7 @@ bookings.post("/create", async (c) => {
       mygoState: bookingResult.state,
       status: bookingStatus,
       isOnRequest: bookingResult.state === "OnRequest",
+      bookingMode: isTokenFree ? "token-free" : "token-based",
     });
 
     const { data: dbBooking, error: dbError } = await supabase
@@ -255,7 +432,7 @@ bookings.post("/create", async (c) => {
       mygoBookingId: bookingResult.bookingId,
       state: bookingResult.state,
       totalPrice: bookingResult.totalPrice,
-      currency: validatedData.currency,
+      currency: currency,
     });
   } catch (error) {
     if (error instanceof ZodError) {
