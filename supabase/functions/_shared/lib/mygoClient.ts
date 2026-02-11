@@ -10,6 +10,8 @@
  * - Only publish REAL-TIME BOOKABLE inventory: Hotel.Available=true AND room.OnRequest=false
  */
 
+import { ValidationError } from "../errors.ts";
+
 // Simple XML element wrapper for Deno compatibility
 class SimpleXMLElement {
   constructor(
@@ -1016,6 +1018,11 @@ export const postJson = async (
           continue;
         }
         
+        // 400 errors are client validation errors - throw ValidationError
+        if (response.status === 400) {
+          throw new ValidationError(`MyGo validation error: ${errorPreview}`);
+        }
+        
         throw new Error(`MyGo ${serviceName} error ${response.status}: ${errorPreview}`);
       }
 
@@ -1297,9 +1304,16 @@ export const searchHotels = async (
   const errorMessage = (data as { ErrorMessage?: { Code?: unknown; Description?: unknown } })
     .ErrorMessage;
   if (errorMessage?.Code) {
-    throw new Error(
-      `MyGo HotelSearch error ${errorMessage.Code}: ${errorMessage.Description}`,
-    );
+    const errorCode = String(errorMessage.Code);
+    const errorDesc = String(errorMessage.Description || '');
+    const fullErrorMessage = `MyGo HotelSearch error ${errorCode}: ${errorDesc}`;
+    
+    // Treat 400 errors and validation-related errors as ValidationErrors
+    if (errorCode === '400' || errorDesc.includes('Vérifier l\'envoi des champs obligatoires') || errorDesc.includes('champs obligatoires')) {
+      throw new ValidationError(fullErrorMessage);
+    }
+    
+    throw new Error(fullErrorMessage);
   }
 
   const items = Array.isArray((data as { HotelSearch?: unknown }).HotelSearch)
