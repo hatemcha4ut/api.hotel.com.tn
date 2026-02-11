@@ -146,6 +146,7 @@ serve(async (request) => {
     });
 
     let freshToken: string;
+    let tokenHash: string;
     try {
       const searchResult = await searchHotels(credential, mygoSearchParams);
       freshToken = searchResult.token;
@@ -159,7 +160,7 @@ serve(async (request) => {
         throw new Error("Failed to retrieve booking token from MyGo");
       }
       
-      const tokenHash = await hashToken(freshToken);
+      tokenHash = await hashToken(freshToken);
       console.log("[Supabase create-booking] Fresh token reconstructed", {
         tokenHash: tokenHash.substring(0, TOKEN_HASH_LOG_LENGTH) + "...",
         hotelsFound: searchResult.hotels.length,
@@ -180,7 +181,6 @@ serve(async (request) => {
     }
 
     // STEP 2: Call BookingCreation with fresh token
-    const tokenHash = await hashToken(freshToken);
     const bookingParams: MyGoBookingParams = {
       token: freshToken,
       preBooking,

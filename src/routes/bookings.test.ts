@@ -1189,28 +1189,4 @@ describe("Token-Free Booking - MyGo Validation Errors", () => {
       }
     });
   });
-
-  describe("MyGo API error handling expectations", () => {
-    it("should document expected 400 error from MyGo for missing city", () => {
-      // This test documents the expected behavior when MyGo returns 400 for missing City field
-      // The error should be caught in mygoClient and thrown as ValidationError
-      // Example MyGo error: "Vérifier l'envoi des champs obligatoires: City"
-      // This should result in HTTP 400 status code, not 502
-      expect(true).toBe(true);
-    });
-
-    it("should document expected 400 error from MyGo for invalid token", () => {
-      // This test documents the expected behavior when MyGo returns 400 for invalid/expired token
-      // The error should be caught in mygoClient and thrown as ValidationError
-      // This should result in HTTP 400 status code, not 502
-      expect(true).toBe(true);
-    });
-
-    it("should document expected 400 error from MyGo for unavailable room", () => {
-      // This test documents the expected behavior when MyGo returns 400 for room not available
-      // The error should be caught in mygoClient and thrown as ValidationError
-      // This should result in HTTP 400 status code, not 502
-      expect(true).toBe(true);
-    });
-  });
 });
