@@ -98,11 +98,11 @@ export const customerSchema = z.object({
 
 export const bookingCreateSchema = z.object({
   preBooking: z.boolean(),
-  token: z.string(),
+  token: z.string().trim().min(1, "Token is required and cannot be empty"),
   methodPayment: z.string(),
   currency: z.string(),
-  city: z.number().int(),
-  hotel: z.number().int(),
+  city: z.number().int().positive("City ID must be a positive integer"),
+  hotel: z.number().int().positive("Hotel ID must be a positive integer"),
   checkIn: dateSchema,
   checkOut: dateSchema,
   options: z

@@ -982,6 +982,10 @@ export const searchHotels = async (
   
   // Debug log: Confirm City value sent to MyGo API
   console.log(`[MyGo HotelSearch] City field value: ${payload.SearchDetails.City}`);
+  console.log(`[MyGo HotelSearch] Search params - CheckIn: ${params.checkIn}, CheckOut: ${params.checkOut}, Rooms: ${params.rooms.length}`);
+  if (params.hotelIds && params.hotelIds.length > 0) {
+    console.log(`[MyGo HotelSearch] Filtering by hotelIds: ${params.hotelIds.join(', ')}`);
+  }
   
   const safePayload = {
     ...payload,
@@ -1195,6 +1199,16 @@ export const searchHotels = async (
     };
   });
 
+  // Validate token is not empty before returning
+  if (!fallbackToken || fallbackToken.trim().length === 0) {
+    console.warn('[MyGo HotelSearch] No token found in search results. Hotels found:', hotels.length);
+    if (hotels.length > 0) {
+      throw new Error('MyGo HotelSearch returned hotels but no booking token. Cannot proceed with booking.');
+    }
+  } else {
+    console.log(`[MyGo HotelSearch] Token generated (first 10 chars): ${fallbackToken.substring(0, 10)}..., Hotels: ${hotels.length}`);
+  }
+
   return { token: fallbackToken, hotels };
 };
 
@@ -1202,16 +1216,39 @@ export const createBooking = async (
   credential: MyGoCredential,
   params: MyGoBookingParams,
 ): Promise<MyGoBookingResponse> => {
-  const data = await postJson(
-    "BookingCreation",
-    buildBookingCreationPayload(credential, params),
-  );
+  const payload = buildBookingCreationPayload(credential, params);
+  
+  // Debug log: Log key identifiers without sensitive data
+  console.log(`[MyGo BookingCreation] Creating booking with token (first 10 chars): ${params.token.substring(0, 10)}...`);
+  console.log(`[MyGo BookingCreation] PreBooking: ${params.preBooking}, RoomSelections count: ${params.roomSelections.length}`);
+  
+  const data = await postJson("BookingCreation", payload);
 
   if (!data || typeof data !== "object") {
-    throw new Error("Invalid BookingCreation response");
+    throw new Error("Invalid BookingCreation response: response is not an object");
   }
 
   const bookingData = data as Record<string, unknown>;
+  
+  // Check for error response from MyGo (similar to searchHotels)
+  const errorMessage = (bookingData as { ErrorMessage?: { Code?: unknown; Description?: unknown } })
+    .ErrorMessage;
+  if (errorMessage?.Code) {
+    const errorCode = String(errorMessage.Code);
+    const errorDesc = String(errorMessage.Description || '');
+    const fullErrorMessage = `MyGo BookingCreation error ${errorCode}: ${errorDesc}`;
+    
+    // Treat 400 errors as ValidationErrors
+    if (errorCode === '400' || errorCode === '400.0') {
+      throw new ValidationError(
+        fullErrorMessage,
+        { code: errorCode, description: errorDesc }
+      );
+    }
+    
+    throw new Error(fullErrorMessage);
+  }
+  
   const bookingIdValue = bookingData.BookingId;
   const bookingId = bookingIdValue != null ? Number(bookingIdValue) : undefined;
   const state = bookingData.State != null ? String(bookingData.State) : undefined;
@@ -1220,6 +1257,15 @@ export const createBooking = async (
 
   const normalizedBookingId = normalizeJsonNumber(bookingId);
   const normalizedTotalPrice = normalizeJsonNumber(totalPrice);
+  
+  // Validate required fields are present
+  if (normalizedBookingId === undefined) {
+    console.error('[MyGo BookingCreation] Missing BookingId in response:', JSON.stringify(bookingData).slice(0, 200));
+    throw new Error("Invalid BookingCreation response: missing BookingId");
+  }
+  
+  console.log(`[MyGo BookingCreation] Booking created successfully: BookingId=${normalizedBookingId}, State=${state}`);
+  
   const response: MyGoBookingResponse = {
     bookingId: normalizedBookingId,
     state,

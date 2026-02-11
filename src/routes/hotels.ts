@@ -4,6 +4,7 @@
  */
 
 import { Hono } from "hono";
+import { ZodError } from "zod";
 import type { Env, HonoVariables } from "../types/env";
 import { searchHotels, hotelDetail } from "../clients/mygoClient";
 import type { MyGoCredential } from "../types/mygo";
@@ -75,7 +76,7 @@ hotels.post("/search", async (c) => {
 
     return c.json(safeResponse);
   } catch (error) {
-    if (error instanceof Error && error.name === "ZodError") {
+    if (error instanceof ZodError) {
       throw new ValidationError("Invalid hotel search data", error);
     }
     // If the error is already a ValidationError from mygoClient, re-throw it
@@ -121,7 +122,7 @@ hotels.post("/detail", async (c) => {
 
     return c.json(hotelDetailResult);
   } catch (error) {
-    if (error instanceof Error && error.name === "ZodError") {
+    if (error instanceof ZodError) {
       throw new ValidationError("Invalid hotel detail request", error);
     }
     // If the error is already a ValidationError from mygoClient, re-throw it

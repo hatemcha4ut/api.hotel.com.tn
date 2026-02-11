@@ -4,6 +4,7 @@
  */
 
 import { Hono } from "hono";
+import { ZodError } from "zod";
 import type { Env, HonoVariables } from "../types/env";
 import { createServiceClient } from "../clients/supabaseClient";
 import { createClicToPayClient } from "../clients/clictopayClient";
@@ -62,7 +63,9 @@ checkout.post("/initiate", async (c) => {
     const supabase = createServiceClient(c.env);
 
     // Fetch booking from database
-    logger.info("Fetching booking", { bookingId: validatedData.bookingId });
+    logger.info("Fetching booking", { 
+      bookingId: validatedData.bookingId 
+    });
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
       .select("*")
@@ -73,6 +76,14 @@ checkout.post("/initiate", async (c) => {
       logger.warn("Booking not found", { bookingId: validatedData.bookingId });
       throw new NotFoundError("Booking not found");
     }
+    
+    logger.debug("Booking retrieved", {
+      bookingId: booking.id,
+      mygoBookingId: booking.mygo_booking_id,
+      hotelId: booking.hotel_id,
+      status: booking.status,
+      totalPrice: booking.total_price,
+    });
 
     // Verify access - user must own the booking
     if (userId && booking.user_id !== userId) {
@@ -267,7 +278,7 @@ checkout.post("/initiate", async (c) => {
     ) {
       throw error;
     }
-    if (error instanceof Error && error.name === "ZodError") {
+    if (error instanceof ZodError) {
       throw new ValidationError("Invalid checkout data", error);
     }
     logger.error("Checkout initiation failed", {
