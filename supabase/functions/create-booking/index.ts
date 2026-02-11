@@ -12,6 +12,9 @@ import { requireUserJWT, createAuthenticatedClient } from "../_shared/auth.ts";
 import { validateSearchParams, requireString, isValidEmail, isValidPhone } from "../_shared/validation.ts";
 import { formatError, ValidationError, ExternalServiceError } from "../_shared/errors.ts";
 
+// Constants for logging
+const TOKEN_HASH_LOG_LENGTH = 16; // Number of characters to show from token hash in logs
+
 // Hash token for secure storage (never store plain token)
 const hashToken = async (token: string): Promise<string> => {
   const encoder = new TextEncoder();
@@ -113,6 +116,17 @@ serve(async (request) => {
     // Default to preBooking=true (recommended)
     const preBooking = typeof body.preBooking === "boolean" ? body.preBooking : true;
 
+    // Log booking request with non-sensitive data
+    console.log("[Supabase create-booking] Token-free booking request", {
+      userId: user.userId,
+      cityId: searchParams.cityId,
+      hotelId: selectedOffer.hotelId as number,
+      checkIn: searchParams.checkIn,
+      checkOut: searchParams.checkOut,
+      roomCount: searchParams.rooms.length,
+      preBooking,
+    });
+
     // STEP 1: Server-side call to MyGo HotelSearch to get fresh token
     const credential = getMyGoCredential();
     
@@ -123,15 +137,42 @@ serve(async (request) => {
       rooms: searchParams.rooms,
       currency: searchParams.currency,
       onlyAvailable: true,
+      hotelIds: [selectedOffer.hotelId as number], // Filter to specific hotel for efficiency
     };
+
+    console.log("[Supabase create-booking] Reconstructing fresh MyGo token", {
+      cityId: searchParams.cityId,
+      hotelId: selectedOffer.hotelId as number,
+    });
 
     let freshToken: string;
     try {
       const searchResult = await searchHotels(credential, mygoSearchParams);
       freshToken = searchResult.token;
+      
+      if (!freshToken || freshToken.trim().length === 0) {
+        console.error("[Supabase create-booking] MyGo HotelSearch returned empty token", {
+          cityId: searchParams.cityId,
+          hotelId: selectedOffer.hotelId as number,
+          hotelsFound: searchResult.hotels.length,
+        });
+        throw new Error("Failed to retrieve booking token from MyGo");
+      }
+      
+      const tokenHash = await hashToken(freshToken);
+      console.log("[Supabase create-booking] Fresh token reconstructed", {
+        tokenHash: tokenHash.substring(0, TOKEN_HASH_LOG_LENGTH) + "...",
+        hotelsFound: searchResult.hotels.length,
+      });
       // Token stays in memory only, never sent to client or stored
     } catch (error) {
-      console.error("Failed to get fresh search token:", error);
+      console.error("[Supabase create-booking] Failed to reconstruct token:", error);
+      
+      // Re-throw ValidationError from MyGo as-is to preserve 400 status
+      if (error instanceof ValidationError) {
+        throw error;
+      }
+      
       throw new ExternalServiceError(
         "Failed to retrieve booking token from MyGo",
         "MyGo HotelSearch"
@@ -139,6 +180,7 @@ serve(async (request) => {
     }
 
     // STEP 2: Call BookingCreation with fresh token
+    const tokenHash = await hashToken(freshToken);
     const bookingParams: MyGoBookingParams = {
       token: freshToken,
       preBooking,
@@ -151,11 +193,29 @@ serve(async (request) => {
       }],
     };
 
+    console.log("[Supabase create-booking] Creating booking with MyGo", {
+      hotelId: selectedOffer.hotelId as number,
+      preBooking,
+      tokenHash: tokenHash.substring(0, TOKEN_HASH_LOG_LENGTH) + "...",
+    });
+
     let myGoResponse;
     try {
       myGoResponse = await createBooking(credential, bookingParams);
+      
+      console.log("[Supabase create-booking] Booking created successfully", {
+        bookingId: myGoResponse.bookingId,
+        state: myGoResponse.state,
+        tokenHash: tokenHash.substring(0, TOKEN_HASH_LOG_LENGTH) + "...",
+      });
     } catch (error) {
-      console.error("MyGo booking creation failed:", error);
+      console.error("[Supabase create-booking] MyGo booking creation failed:", error);
+      
+      // Re-throw ValidationError from MyGo as-is to preserve 400 status
+      if (error instanceof ValidationError) {
+        throw error;
+      }
+      
       throw new ExternalServiceError(
         error instanceof Error ? error.message : "Booking creation failed",
         "MyGo BookingCreation"
@@ -164,7 +224,12 @@ serve(async (request) => {
 
     // STEP 3: Store booking record in database
     const supabase = createAuthenticatedClient(request);
-    const tokenHash = await hashToken(freshToken);
+    
+    console.log("[Supabase create-booking] Storing booking in database", {
+      userId: user.userId,
+      bookingId: myGoResponse.bookingId,
+      state: myGoResponse.state,
+    });
 
     const { data: bookingRecord, error: dbError } = await supabase
       .from("mygo_bookings")
@@ -189,11 +254,13 @@ serve(async (request) => {
 
     // STEP 4: Handle DB tracking failure gracefully
     if (dbError) {
-      console.error("CRITICAL: Booking created in MyGo but DB tracking failed:", {
+      console.error("[Supabase create-booking] CRITICAL: Booking created in MyGo but DB tracking failed:", {
         message: dbError.message,
         code: dbError.code,
         myGoBookingId: myGoResponse.bookingId,
         userId: user.userId,
+        cityId: searchParams.cityId,
+        hotelId: selectedOffer.hotelId as number,
       });
 
       // Return 200 to avoid retry and double booking
@@ -211,6 +278,11 @@ serve(async (request) => {
     }
 
     // Success - both booking and tracking saved
+    console.log("[Supabase create-booking] Booking and tracking saved successfully", {
+      recordId: bookingRecord.id,
+      bookingId: myGoResponse.bookingId,
+    });
+    
     return jsonResponse(
       {
         bookingCreated: true,
@@ -222,7 +294,7 @@ serve(async (request) => {
       origin,
     );
   } catch (error) {
-    console.error("Booking error:", error);
+    console.error("[Supabase create-booking] Booking error:", error);
 
     const errorResponse = formatError(error);
     const statusCode = error instanceof ValidationError ? 400
