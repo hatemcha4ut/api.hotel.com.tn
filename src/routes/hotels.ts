@@ -78,6 +78,10 @@ hotels.post("/search", async (c) => {
     if (error instanceof Error && error.name === "ZodError") {
       throw new ValidationError("Invalid hotel search data", error);
     }
+    // If the error is already a ValidationError from mygoClient, re-throw it
+    if (error instanceof ValidationError) {
+      throw error;
+    }
     logger.error("Hotel search failed", {
       error: error instanceof Error ? error.message : String(error),
     });
@@ -119,6 +123,10 @@ hotels.post("/detail", async (c) => {
   } catch (error) {
     if (error instanceof Error && error.name === "ZodError") {
       throw new ValidationError("Invalid hotel detail request", error);
+    }
+    // If the error is already a ValidationError from mygoClient, re-throw it
+    if (error instanceof ValidationError) {
+      throw error;
     }
     logger.error("Hotel detail fetch failed", {
       error: error instanceof Error ? error.message : String(error),

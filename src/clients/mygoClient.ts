@@ -11,6 +11,7 @@
  */
 
 import { parseSimpleXml, SimpleXMLElement } from '../utils/xml';
+import { ValidationError } from '../middleware/errorHandler';
 import type {
   MyGoCredential,
   MyGoCity,
@@ -699,6 +700,14 @@ export const postJson = async (
           continue;
         }
         
+        // 400 errors are client validation errors - throw ValidationError
+        if (response.status === 400) {
+          throw new ValidationError(
+            `MyGo validation error: ${errorPreview}`,
+            { service: serviceName, status: response.status, response: errorPreview }
+          );
+        }
+        
         throw new Error(`MyGo ${serviceName} error ${response.status}: ${errorPreview}`);
       }
 
@@ -987,9 +996,21 @@ export const searchHotels = async (
   const errorMessage = (data as { ErrorMessage?: { Code?: unknown; Description?: unknown } })
     .ErrorMessage;
   if (errorMessage?.Code) {
-    throw new Error(
-      `MyGo HotelSearch error ${errorMessage.Code}: ${errorMessage.Description}`,
-    );
+    const errorCode = String(errorMessage.Code);
+    const errorDesc = String(errorMessage.Description || '');
+    const fullErrorMessage = `MyGo HotelSearch error ${errorCode}: ${errorDesc}`;
+    
+    // Treat 400 errors as ValidationErrors
+    // MyGo returns 400 for missing required fields, invalid parameters, etc.
+    // Note: We check for '400' string because MyGo may return Code as string or number
+    if (errorCode === '400' || errorCode === '400.0') {
+      throw new ValidationError(
+        fullErrorMessage,
+        { code: errorCode, description: errorDesc }
+      );
+    }
+    
+    throw new Error(fullErrorMessage);
   }
 
   type MyGoHotelSearchJson = Record<string, unknown> & {

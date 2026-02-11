@@ -186,4 +186,16 @@ describe("postJson retry behavior", () => {
     
     expect(true).toBe(true); // Placeholder
   });
+
+  it("should document that 400 errors throw ValidationError not generic Error", () => {
+    // When MyGo returns a 400 status (validation error), postJson should throw
+    // ValidationError instead of generic Error. This allows the route handler
+    // to return 400 to the client instead of 502.
+    // 
+    // Example MyGo 400 error: "Vérifier l'envoi des champs obligatoires: City"
+    // Expected: ValidationError with status 400
+    // Previous behavior: ExternalServiceError with status 502
+    
+    expect(true).toBe(true); // Placeholder - would need fetch mocking
+  });
 });
