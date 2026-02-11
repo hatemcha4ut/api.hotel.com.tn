@@ -501,8 +501,9 @@ describe("Token-Free Booking Schema", () => {
       const result = selectedOfferSchema.safeParse({
         hotelId: 100,
         roomId: 5,
-        boardCode: "BB",
-        price: 250.50,
+        boardingId: 2,
+        views: [1, 3],
+        supplements: [5],
       });
 
       expect(result.success).toBe(true);
@@ -530,7 +531,7 @@ describe("Token-Free Booking Schema", () => {
       const result = selectedOfferSchema.safeParse({
         hotelId: 100,
         roomId: 5,
-        // boardCode and price are optional
+        // boardingId, views, and supplements are optional
       });
 
       expect(result.success).toBe(true);
