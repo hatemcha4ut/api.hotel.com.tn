@@ -235,6 +235,11 @@ export const buildHotelSearchPayload = (
     Rooms: Array<{ Adult: number; Child: number[] }>;
   };
 } => {
+  // Defensive validation: ensure City field is valid before sending to MyGo
+  if (typeof params.cityId !== "number" || !Number.isInteger(params.cityId) || params.cityId <= 0) {
+    throw new Error(`Invalid cityId for MyGo HotelSearch: ${params.cityId} (must be positive integer)`);
+  }
+
   return {
     Credential: {
       Login: credential.login,
