@@ -998,8 +998,6 @@ export const postJson = async (
         signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
-
       const responseText = await response.text();
       const contentType = response.headers.get("content-type") || "";
 
@@ -1044,6 +1042,8 @@ export const postJson = async (
         console.log(`[MyGo ${serviceName}] Error encountered, backing off for ${backoffMs}ms before retry`);
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
       }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
