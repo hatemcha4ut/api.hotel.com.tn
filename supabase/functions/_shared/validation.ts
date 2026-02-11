@@ -96,9 +96,9 @@ export const validateSearchParams = (params: unknown): SearchParams => {
 
   const p = params as Partial<SearchParams>;
 
-  // Validate cityId
-  if (!p.cityId || typeof p.cityId !== "number") {
-    throw new ValidationError("cityId is required (number)");
+  // Validate cityId - must be a positive integer
+  if (typeof p.cityId !== "number" || !Number.isInteger(p.cityId) || p.cityId <= 0) {
+    throw new ValidationError("cityId is required (positive integer)");
   }
 
   // Validate checkIn

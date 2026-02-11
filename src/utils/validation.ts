@@ -41,7 +41,7 @@ export const roomSchema = z.object({
 });
 
 export const hotelSearchSchema = z.object({
-  cityId: z.number().int().positive(),
+  cityId: z.number().int().positive("cityId must be a positive integer"),
   checkIn: dateSchema,
   checkOut: dateSchema,
   rooms: z.array(roomSchema).min(1).max(10),

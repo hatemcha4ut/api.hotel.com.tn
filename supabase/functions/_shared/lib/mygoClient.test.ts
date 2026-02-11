@@ -543,4 +543,77 @@ Deno.test({
   },
 });
 
+// Test: buildHotelSearchPayload should reject cityId = 0
+Deno.test("buildHotelSearchPayload should reject cityId = 0", () => {
+  const credential = { login: "test", password: "test" };
+  const params = {
+    cityId: 0,
+    checkIn: "2025-01-10",
+    checkOut: "2025-01-12",
+    rooms: [{ adults: 2, childrenAges: [] }],
+  };
+
+  assertThrows(
+    () => buildHotelSearchPayload(credential, params),
+    Error,
+    "Invalid cityId for MyGo HotelSearch: 0 (must be positive integer)",
+  );
+});
+
+// Test: buildHotelSearchPayload should reject negative cityId
+Deno.test("buildHotelSearchPayload should reject negative cityId", () => {
+  const credential = { login: "test", password: "test" };
+  const params = {
+    cityId: -5,
+    checkIn: "2025-01-10",
+    checkOut: "2025-01-12",
+    rooms: [{ adults: 2, childrenAges: [] }],
+  };
+
+  assertThrows(
+    () => buildHotelSearchPayload(credential, params),
+    Error,
+    "Invalid cityId for MyGo HotelSearch: -5 (must be positive integer)",
+  );
+});
+
+// Test: buildHotelSearchPayload should reject non-integer cityId
+Deno.test("buildHotelSearchPayload should reject non-integer cityId", () => {
+  const credential = { login: "test", password: "test" };
+  const params = {
+    cityId: 1.5,
+    checkIn: "2025-01-10",
+    checkOut: "2025-01-12",
+    rooms: [{ adults: 2, childrenAges: [] }],
+  };
+
+  assertThrows(
+    () => buildHotelSearchPayload(credential, params),
+    Error,
+    "Invalid cityId for MyGo HotelSearch: 1.5 (must be positive integer)",
+  );
+});
+
+// Test: buildHotelSearchPayload should accept valid positive integer cityId
+Deno.test("buildHotelSearchPayload should accept valid positive integer cityId", () => {
+  const credential = { login: "test", password: "test" };
+  const params = {
+    cityId: 42,
+    checkIn: "2025-01-10",
+    checkOut: "2025-01-12",
+    rooms: [{ adults: 2, childrenAges: [5] }],
+  };
+
+  const payload = buildHotelSearchPayload(credential, params);
+  
+  assertEquals(payload.SearchDetails.City, 42);
+  assertEquals(payload.Credential.Login, "test");
+  assertEquals(payload.Credential.Password, "test");
+  assertEquals(payload.SearchDetails.BookingDetails.CheckIn, "2025-01-10");
+  assertEquals(payload.SearchDetails.BookingDetails.CheckOut, "2025-01-12");
+  assertEquals(payload.SearchDetails.Rooms.length, 1);
+  assertEquals(payload.SearchDetails.Rooms[0].Adult, 2);
+  assertEquals(payload.SearchDetails.Rooms[0].Child, [5]);
+});
+
 console.log("✅ All MyGo Client tests passed");
