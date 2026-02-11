@@ -4,6 +4,7 @@
  */
 
 import { Hono } from "hono";
+import { ZodError } from "zod";
 import type { Env, HonoVariables } from "../types/env";
 import { createBooking, bookingDetails } from "../clients/mygoClient";
 import { createServiceClient } from "../clients/supabaseClient";
@@ -72,6 +73,7 @@ bookings.post("/prebook", async (c) => {
       checkIn: validatedData.checkIn,
       checkOut: validatedData.checkOut,
       rooms: validatedData.rooms.length,
+      tokenPreview: validatedData.token.substring(0, Math.min(10, validatedData.token.length)) + "...",
     });
 
     const bookingResult = await createBooking(credential, mygoParams);
@@ -135,7 +137,7 @@ bookings.post("/prebook", async (c) => {
       currency: validatedData.currency,
     });
   } catch (error) {
-    if (error instanceof Error && error.name === "ZodError") {
+    if (error instanceof ZodError) {
       throw new ValidationError("Invalid booking data", error);
     }
     // If the error is already a ValidationError from mygoClient, re-throw it
@@ -190,6 +192,7 @@ bookings.post("/create", async (c) => {
       checkIn: validatedData.checkIn,
       checkOut: validatedData.checkOut,
       rooms: validatedData.rooms.length,
+      tokenPreview: validatedData.token.substring(0, Math.min(10, validatedData.token.length)) + "...",
     });
 
     const bookingResult = await createBooking(credential, mygoParams);
@@ -255,7 +258,7 @@ bookings.post("/create", async (c) => {
       currency: validatedData.currency,
     });
   } catch (error) {
-    if (error instanceof Error && error.name === "ZodError") {
+    if (error instanceof ZodError) {
       throw new ValidationError("Invalid booking data", error);
     }
     // If the error is already a ValidationError from mygoClient, re-throw it
@@ -373,7 +376,7 @@ bookings.get("/:id", async (c) => {
     if (error instanceof NotFoundError) {
       throw error;
     }
-    if (error instanceof Error && error.name === "ZodError") {
+    if (error instanceof ZodError) {
       throw new ValidationError("Invalid booking ID format", error);
     }
     logger.error("Failed to fetch booking", {
