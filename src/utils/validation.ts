@@ -109,8 +109,9 @@ export const searchParamsSchema = z.object({
 export const selectedOfferSchema = z.object({
   hotelId: z.number().int().positive("hotelId must be a positive integer"),
   roomId: z.number().int().positive("roomId must be a positive integer"),
-  boardCode: z.string().optional(),
-  price: z.number().optional(),
+  boardingId: z.number().int().optional(),
+  views: z.array(z.number().int()).optional(),
+  supplements: z.array(z.number().int()).optional(),
 });
 
 // Token-free booking request schema (new approach)
