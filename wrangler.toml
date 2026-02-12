@@ -34,6 +34,7 @@ workers_dev = false
 # - CLICTOPAY_SECRET: ClicToPay HMAC secret for callback verification
 # - ALLOWED_ORIGINS: Comma-separated list of allowed CORS origins
 #     Example: "https://www.hotel.com.tn,https://admin.hotel.com.tn,http://localhost:5173"
+#     Default (if not set): "https://www.hotel.com.tn"
 #     MUST include https://admin.hotel.com.tn for admin portal access
 # - HOTEL_UPSTREAM_BASE_URL: Optional upstream URL (if needed)
 # - GITHUB_SHA: Git commit SHA (injected at build time)

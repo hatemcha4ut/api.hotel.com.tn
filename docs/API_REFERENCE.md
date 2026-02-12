@@ -752,13 +752,19 @@ Checkout policies are stored in the database `settings` table under key `"checko
 
 ## CORS
 
-The API supports CORS for the following origins (configured via `ALLOWED_ORIGINS` environment variable):
+The API supports CORS for origins configured via the `ALLOWED_ORIGINS` environment variable.
 
+**Default Allowed Origins** (if `ALLOWED_ORIGINS` is not set):
 - `https://www.hotel.com.tn`
-- `https://admin.hotel.com.tn`
-- `http://localhost:5173` (development)
 
-Allowed methods: `GET, POST, PUT, DELETE, OPTIONS`
+**Recommended Configuration** (comma-separated):
+- `https://www.hotel.com.tn,https://admin.hotel.com.tn,http://localhost:5173`
+
+**Allowed Methods:** `GET, POST, PUT, DELETE, OPTIONS`
+
+**Allowed Headers:** `Content-Type, Authorization, X-Request-ID`
+
+**Note:** If the `ALLOWED_ORIGINS` environment variable is not configured, the API will default to allowing `https://www.hotel.com.tn` to ensure basic frontend functionality.
 
 ---
 
