@@ -41,7 +41,20 @@ export const roomSchema = z.object({
 });
 
 export const hotelSearchSchema = z.object({
-  cityId: z.number().int().positive("cityId must be a positive integer"),
+  cityId: z.union([z.number(), z.string()])
+    .transform((val) => {
+      if (typeof val === "string") {
+        const trimmed = val.trim();
+        if (trimmed === "") {
+          return NaN; // Will be caught by refine
+        }
+        return Number(trimmed);
+      }
+      return val;
+    })
+    .refine((val) => !isNaN(val) && Number.isInteger(val) && val > 0, {
+      message: "Invalid cityId. Must be a positive integer numeric ID from /static/cities endpoint.",
+    }),
   checkIn: dateSchema,
   checkOut: dateSchema,
   rooms: z.array(roomSchema).min(1).max(10),
