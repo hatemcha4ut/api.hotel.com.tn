@@ -142,7 +142,7 @@ serve(async (request) => {
       checkOut: searchParams.checkOut,
       rooms: searchParams.rooms,
       currency: searchParams.currency,
-      onlyAvailable: true, // Always true for real-time availability
+      onlyAvailable: false, // Changed to false to fix MyGo City validation error
     };
 
     // Check cache (cache is token-free)
