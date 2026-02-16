@@ -260,11 +260,11 @@ export const buildHotelSearchPayload = (
       Password: credential.password,
     },
     SearchDetails: {
-      City: params.cityId,
       BookingDetails: {
         CheckIn: params.checkIn,
         CheckOut: params.checkOut,
         Hotels: params.hotelIds ?? [],
+              City: params.cityId,
       },
       Filters: {
         Keywords: "",
